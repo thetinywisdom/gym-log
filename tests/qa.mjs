@@ -259,7 +259,7 @@ await p4.goto(BASE + '#/log'); await p4.waitForSelector('.ex');
 ok('Migrated old draft: pull slot = Both free, done pulldown set kept', (await p4.locator('.slot-pick button.on').textContent()).trim() === 'Both free' && (await p4.locator('.ex[data-ex="lat-pulldown"] .set-row.done').count()) === 1);
 ok('Migrated: old 3-set iso-row history → 3 sets in Both mode', (await p4.locator('.ex[data-ex="iso-row"] .set-row').count()) === 3);
 ok('Old chest press done set kept', (await p4.locator('.ex[data-ex="chest-press"] .set-row.done').count()) === 1);
-ok('Schema bumped to 3', (await p4.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')).schema)) === 3);
+ok('Schema bumped to 4', (await p4.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')).schema)) === 4);
 ok('Draft oblique 31 → 15.5 (one-time)', (await p4.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')).draft.sets['kb-oblique'][0].weight)) === 15.5);
 const pf = await p4.evaluate(async () => { const L = await import(new URL('js/logic.js', location.href).href); const P = await import(new URL('js/program.js', location.href).href);
   return ['kb-oblique', 'kb-around'].map((id) => L.prefillSets(P.findExercise(id))[0].weight); });
@@ -275,6 +275,154 @@ ok('Old Chest Fly + Lat Pulldown history kept', /1 session/.test(await p4.locato
 await p4.goto(BASE + '#/muscles'); await p4.tap('[data-act="m-mode"][data-mode="week"]');
 await p4.goto(BASE + '#/schedule'); await p4.waitForSelector('.days');
 await ctx4.close();
+
+// --- Hammer Curl equipment picker (Dumbbells | Kettlebell), v1.3.1 ---
+{
+  const ctx5 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  const p5 = await ctx5.newPage();
+  p5.on('pageerror', (e) => errors.push('pageerror(hammer): ' + e.message));
+  p5.on('console', (m) => { if (m.type() === 'error') errors.push('hammer: ' + m.text()); });
+  p5.on('dialog', (d) => d.accept());
+  const ls = () => p5.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')));
+  const hc = () => p5.locator('.ex[data-ex="kb-hammer-curl"]');
+  const hw = (i = 0) => hc().locator(`.set-row[data-i="${i}"] input[data-f="weight"]`).inputValue();
+  const hon = async () => (await hc().locator('[data-act="pick-equip"].on').textContent()).trim();
+  const htgt = async () => (await hc().locator('.ex-target').textContent()).trim();
+  const openKb = async () => {
+    await p5.goto(BASE + '#/log'); await p5.waitForSelector('.ex');
+    if (!/Kettlebell/.test(await p5.textContent('.hero h1'))) { await p5.tap('[data-act="pick-workout"][data-w="kb"]'); await p5.waitForSelector('.ex[data-ex="kb-hammer-curl"]'); }
+    if (!(await hc().locator('[data-act="toggle-opt"]').isChecked())) { await hc().locator('[data-act="toggle-opt"]').check(); await p5.waitForSelector('.ex[data-ex="kb-hammer-curl"] .equip-pick'); }
+  };
+  await openKb();
+  const names = await hc().locator('[data-act="pick-equip"]').allTextContents();
+  ok('Hammer Curl: picker Dumbbells | Kettlebell on the card', names.map((x) => x.trim()).join('|') === 'Dumbbells|Kettlebell', names.join('|'));
+  ok('Hammer Curl: card named "Hammer Curl" (no "(KB)")', (await hc().locator('.ex-name').textContent()).trim().startsWith('Hammer Curl') && !/\(KB\)/.test(await hc().locator('.ex-name').textContent()));
+  ok('Hammer Curl: defaults to Dumbbells, 10 kg prefilled', (await hon()) === 'Dumbbells' && (await hw()) === '10' && (await hw(1)) === '10');
+  ok('Hammer Curl: subtitle "Dumbbells · 10 kg each"', /Dumbbells · 10 kg each/.test(await htgt()), await htgt());
+  ok('Hammer Curl: same muscles (Brachialis, Biceps)', /Brachialis, Biceps/.test(await hc().locator('.ex-muscles').textContent()));
+  await hc().locator('[data-act="pick-equip"][data-equip="kb"]').tap(); await p5.waitForTimeout(150);
+  ok('Switch to Kettlebell → 11 kg prefilled (no KB history)', (await hon()) === 'Kettlebell' && (await hw()) === '11' && (await hw(1)) === '11');
+  ok('Kettlebell subtitle "Kettlebell · 11 kg each"', /Kettlebell · 11 kg each/.test(await htgt()), await htgt());
+  let st = await ls();
+  ok('Equipment choice saved to settings (synced) + draft', st.settings.equip?.['kb-hammer-curl'] === 'kb' && st.draft.equip?.['kb-hammer-curl'] === 'kb');
+  await p5.reload(); await p5.waitForSelector('.ex[data-ex="kb-hammer-curl"] .equip-pick');
+  ok('Kettlebell choice persists across reload', (await hon()) === 'Kettlebell' && (await hw()) === '11');
+  // log one KB session at 12 kg, then a Dumbbell one at 12 kg → each equipment prefills from its own last weight
+  const logHammer = async (equip, kg) => {
+    await openKb();
+    if ((await hon()) !== equip) { await hc().locator(`[data-act="pick-equip"]:has-text("${equip}")`).tap(); await p5.waitForTimeout(150); }
+    const inp = hc().locator('.set-row[data-i="0"] input[data-f="weight"]'); await inp.fill(String(kg)); await inp.blur();
+    for (let i = 0; i < 2; i++) await hc().locator(`.set-row[data-i="${i}"] [data-act="done"]`).tap();
+    await p5.tap('[data-act="save"]'); await p5.waitForSelector('#toast.show'); await p5.waitForTimeout(200);
+  };
+  await logHammer('Kettlebell', 12);
+  st = await ls();
+  const sKb = Object.values(st.sessions).find((x) => x.exercises.some((e) => e.id === 'kb-hammer-curl'));
+  const eKb = sKb?.exercises.find((e) => e.id === 'kb-hammer-curl');
+  ok('Saved session tags equipment on entry + each set', eKb?.equip === 'kb' && eKb.sets.length === 2 && eKb.sets.every((x) => x.equip === 'kb' && x.weight === 12), JSON.stringify(eKb));
+  await openKb();
+  ok('New workout remembers Kettlebell, prefill = last KB weight 12', (await hon()) === 'Kettlebell' && (await hw()) === '12', `${await hon()} ${await hw()}`);
+  await hc().locator('[data-act="pick-equip"][data-equip="db"]').tap(); await p5.waitForTimeout(150);
+  ok('Switch to Dumbbells → 10 (KB weight not used)', (await hon()) === 'Dumbbells' && (await hw()) === '10');
+  await p5.tap('[data-act="discard"]'); await p5.waitForTimeout(200);
+  await logHammer('Dumbbells', 12.5);
+  await openKb();
+  ok('Dumbbells remembered, prefill = last DB weight 12.5', (await hon()) === 'Dumbbells' && (await hw()) === '12.5' && /Dumbbells · 12\.5 kg each/.test(await htgt()), `${await hon()} ${await hw()} ${await htgt()}`);
+  await hc().locator('[data-act="pick-equip"][data-equip="kb"]').tap(); await p5.waitForTimeout(150);
+  ok('Back to Kettlebell → 12 again', (await hw()) === '12');
+  await hc().locator('[data-act="pick-equip"][data-equip="db"]').tap(); await p5.waitForTimeout(150);
+  await hc().scrollIntoViewIfNeeded(); await p5.evaluate(() => window.scrollBy(0, -60)); await p5.waitForTimeout(300);
+  await hc().screenshot({ path: SHOTS + '09-hammer-equipment.png' });
+  // History shows the equipment
+  await p5.goto(BASE + '#/history'); await p5.waitForSelector('.hist');
+  const heads = p5.locator('.hist-head');
+  await heads.nth(0).tap(); await heads.nth(1).tap(); await p5.waitForTimeout(200);
+  const bodies = (await p5.locator('.hist-body').allTextContents()).join(' || ');
+  ok('History: sessions show "Hammer Curl · Dumbbells" and "· Kettlebell"', /Hammer Curl\s*· Dumbbells/.test(bodies) && /Hammer Curl\s*· Kettlebell/.test(bodies), bodies.slice(0, 200));
+  await p5.tap('[data-act="mode"][data-mode="exercises"]');
+  await p5.locator('.list-row', { hasText: 'Hammer Curl' }).filter({ hasNotText: 'gym' }).first().tap();
+  await p5.waitForSelector('#sheet.open');
+  const sh = await p5.textContent('#sheet');
+  ok('History exercise sheet lists equipment per session', /· Dumbbells/.test(sh) && /· Kettlebell/.test(sh));
+  await ctx5.close();
+
+  // Legacy: untagged "Hammer Curl (KB)" logs count as Kettlebell; Dumbbells start at 10. Old draft stays on KB.
+  const ctx6 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
+  const p6 = await ctx6.newPage();
+  p6.on('pageerror', (e) => errors.push('pageerror(hammer-legacy): ' + e.message));
+  await p6.addInitScript(() => {
+    if (localStorage.getItem('fitlog.v1')) return;
+    const t = Date.now();
+    localStorage.setItem('fitlog.v1', JSON.stringify({ schema: 3,
+      settings: { planMode: '3day', sound: true, vibrate: true, keepAwake: true, updatedAt: t },
+      schedule: { items: [], updatedAt: t },
+      sessions: { h1: { id: 'h1', workoutId: 'kb', date: '2026-10-20', startedAt: t, savedAt: t, updatedAt: t, exercises: [{ id: 'kb-hammer-curl', name: 'Hammer Curl (KB)', sets: [{ reps: 12, weight: 13 }, { reps: 12, weight: 13 }] }] } },
+      deleted: {}, draft: null }));
+  });
+  await p6.goto(BASE + '#/log'); await p6.waitForSelector('.ex');
+  if (!/Kettlebell/.test(await p6.textContent('.hero h1'))) await p6.tap('[data-act="pick-workout"][data-w="kb"]');
+  await p6.locator('.ex[data-ex="kb-hammer-curl"] [data-act="toggle-opt"]').check(); await p6.waitForSelector('.ex[data-ex="kb-hammer-curl"] .equip-pick');
+  const w6 = () => p6.locator('.ex[data-ex="kb-hammer-curl"] .set-row[data-i="0"] input[data-f="weight"]').inputValue();
+  ok('Legacy: default Dumbbells 10 even with old KB history', (await w6()) === '10');
+  await p6.locator('.ex[data-ex="kb-hammer-curl"] [data-act="pick-equip"][data-equip="kb"]').tap(); await p6.waitForTimeout(150);
+  ok('Legacy: untagged old "Hammer Curl (KB)" logs prefill Kettlebell (13)', (await w6()) === '13');
+  await p6.goto(BASE + '#/history'); await p6.waitForSelector('.hist'); await p6.locator('.hist-head').first().tap();
+  ok('Legacy session shown as "Hammer Curl · Kettlebell"', /Hammer Curl\s*· Kettlebell/.test(await p6.textContent('.hist-body')));
+  await ctx6.close();
+}
+
+// --- card header (v1.3.1): ▶ Watch + muscles icon buttons top-right, 360px wide ---
+{
+  const ctx7 = await browser.newContext({ viewport: { width: 360, height: 780 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  const p7 = await ctx7.newPage();
+  p7.on('pageerror', (e) => errors.push('pageerror(header): ' + e.message));
+  const checkHeaders = async (label) => {
+    const r = await p7.$$eval('.ex', (cards) => cards.map((c) => {
+      const h = c.querySelector('.ex-head'), w = h.querySelector('.ex-actions [data-act="watch"]'), m = h.querySelector('.ex-actions [data-act="ex-map"]');
+      const t = h.querySelector('.ex-title').getBoundingClientRect(), a = h.querySelector('.ex-actions').getBoundingClientRect();
+      const n = h.querySelector('.ex-name'), nr = n.getBoundingClientRect(), lh = parseFloat(getComputedStyle(n).lineHeight) || 24;
+      const wb = w?.getBoundingClientRect(), mb = m?.getBoundingClientRect();
+      return { id: c.dataset.ex, watch: !!w, map: !!m, wLabel: w?.getAttribute('aria-label'), mLabel: m?.getAttribute('aria-label'),
+        size: Math.min(wb?.width ?? 0, wb?.height ?? 0, mb?.width ?? 0, mb?.height ?? 0), sameSize: wb && mb && wb.width === mb.width && wb.height === mb.height,
+        sameRow: wb && mb && Math.abs(wb.top - mb.top) < 1 && wb.right <= mb.left + 1, noOverlap: t.right <= a.left + 0.5, oneLine: nr.height <= lh * 1.3,
+        inCorner: a.right >= h.getBoundingClientRect().right - 1 && a.top - h.getBoundingClientRect().top < 4,
+        oldWatch: c.querySelectorAll('.ex-meta [data-act="watch"]').length };
+    }));
+    const bad = r.filter((x) => !(x.watch && x.map && x.size >= 40 && x.sameSize && x.sameRow && x.noOverlap && x.oneLine && x.inCorner && !x.oldWatch && x.wLabel === 'Watch demo' && x.mLabel === 'Show muscles'));
+    ok(`Card headers (${label}, 360px): Watch + Show muscles icon buttons top-right, ≥40px, same size, title one line, no overlap`, r.length > 0 && !bad.length, bad.length ? JSON.stringify(bad[0]) : `${r.length} cards`);
+  };
+  await p7.goto(BASE + '#/log'); await p7.waitForSelector('.ex');
+  if (!/Kettlebell/.test(await p7.textContent('.hero h1'))) { await p7.tap('[data-act="pick-workout"][data-w="kb"]'); await p7.waitForSelector('.ex'); }
+  await p7.locator('.ex[data-ex="kb-hammer-curl"] [data-act="toggle-opt"]').check(); await p7.waitForTimeout(150);
+  await checkHeaders('KB day');
+  const ell = await p7.$eval('.ex .ex-name', (n) => { const cs = getComputedStyle(n); return cs.textOverflow === 'ellipsis' && cs.whiteSpace === 'nowrap' && cs.overflow === 'hidden'; });
+  ok('Long titles truncate with an ellipsis', ell);
+  // long name stress test: inject a very long title and check it still doesn't push the buttons
+  const longOk = await p7.evaluate(() => { const n = document.querySelector('.ex[data-ex="kb-hammer-curl"] .ex-name'); n.textContent = 'Hammer Curl With A Ridiculously Long Exercise Name'; const h = n.closest('.ex-head');
+    const t = h.querySelector('.ex-title').getBoundingClientRect(), a = h.querySelector('.ex-actions').getBoundingClientRect(); return n.scrollWidth > n.clientWidth && t.right <= a.left + 0.5 && a.right <= h.getBoundingClientRect().right + 0.5; });
+  ok('Very long title is cut with "…" and buttons stay in place', longOk);
+  const fs = await p7.$eval('.ex .icon-btn.tool', (b) => { b.focus({ focusVisible: true }); return getComputedStyle(b).outlineStyle; });
+  ok('Icon buttons have a focus ring', fs !== 'none', fs);
+  await p7.reload(); await p7.waitForSelector('.ex');
+  await p7.locator('.ex[data-ex="kb-swing"]').scrollIntoViewIfNeeded();
+  await p7.evaluate(() => window.scrollBy(0, -10));
+  const hb = await p7.locator('.ex[data-ex="kb-swing"] .ex-head').boundingBox();
+  const hb2 = await p7.locator('.ex[data-ex="kb-hammer-curl"] .ex-head').boundingBox();
+  await p7.locator('.ex[data-ex="kb-swing"]').screenshot({ path: SHOTS + '11-card-header.png' });
+  await p7.locator('.ex[data-ex="kb-hammer-curl"] [data-act="watch"]').tap();
+  await p7.waitForSelector('#watch.open'); ok('Header ▶ Watch opens the player', true);
+  await p7.tap('[data-act="watch-close"]'); await p7.waitForTimeout(300);
+  await p7.locator('.ex[data-ex="kb-swing"] .ex-actions [data-act="ex-map"]').tap();
+  ok('Header muscle icon opens the muscle sheet', await p7.waitForSelector('#sheet.open', { timeout: 3000 }).then(() => true).catch(() => false));
+  ok('Muscle sheet has no Watch control', (await p7.$$eval('#sheet [data-act="watch"], #sheet .watch-open', (n) => n.length)) === 0);
+  await p7.tap('#sheet [data-act="sheet-close"]'); await p7.waitForTimeout(300);
+  // pull-slot cards use the same header
+  await p7.tap('[data-act="pick-workout"][data-w="upper"]'); await p7.waitForSelector('.slot[data-slot="pull-slot"]');
+  await p7.tap('[data-act="pick-option"][data-opt="both"]').catch(() => p7.locator('.slot-pick button', { hasText: 'Both' }).tap()); await p7.waitForTimeout(200);
+  ok('Pull slot "Both" shows two slot cards', (await p7.locator('.ex.in-slot').count()) === 2);
+  await checkHeaders('Upper + pull slot');
+  await ctx7.close();
+}
 
 // --- service worker offline ---
 const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 } });

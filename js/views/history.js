@@ -1,4 +1,4 @@
-import { PROGRAM, getWorkout, allExercises, MUSCLES } from '../program.js';
+import { PROGRAM, getWorkout, allExercises, MUSCLES, findExercise, entryEquip, equipOption } from '../program.js';
 import { store } from '../store.js';
 import { historyFor, bestFor, readyToProgress } from '../logic.js';
 import { fmtDate, esc, fmtKg } from '../utils.js';
@@ -9,6 +9,14 @@ let mode = 'sessions';
 const open = new Set();
 
 const volume = (s) => s.exercises.reduce((v, e) => v + e.sets.reduce((a, x) => a + (x.weight || 0) * (x.reps || 0), 0), 0);
+/** Exercise name as logged, plus its equipment ("Hammer Curl · Dumbbells") for exercises with variants. */
+function entryLabel(e) {
+  const def = findExercise(e.id);
+  if (!def?.equip) return esc(e.name);
+  const eq = equipOption(def, entryEquip(def, e));
+  return `${esc(def.name)} <span class="equip-tag">· ${esc(eq.name)}</span>`;
+}
+const equipName = (def, equip) => (def?.equip && equip ? equipOption(def, equip).name : '');
 const setCount = (s) => s.exercises.reduce((n, e) => n + e.sets.length, 0);
 
 export function renderHistory(el) {
@@ -24,7 +32,7 @@ export function renderHistory(el) {
           <span class="hist-main"><b>${esc(w ? w.name : s.workoutId)}</b><span class="muted small">${fmtDate(s.date)} · ${setCount(s)} sets · ${Math.round(volume(s)).toLocaleString()} kg volume${s.durationMin ? ` · ${s.durationMin} min` : ''}</span></span>
           <span class="chev">${ICON.chevR}</span>
         </button>
-        ${isOpen ? `<div class="hist-body">${s.exercises.map((e) => `<div class="hist-ex"><span>${esc(e.name)}</span><span class="muted">${e.sets.map((x) => (x.weight == null ? `${x.reps}` : `${fmtKg(x.weight)}×${x.reps}`)).join(' · ')}</span></div>`).join('')}
+        ${isOpen ? `<div class="hist-body">${s.exercises.map((e) => `<div class="hist-ex"><span>${entryLabel(e)}</span><span class="muted">${e.sets.map((x) => (x.weight == null ? `${x.reps}` : `${fmtKg(x.weight)}×${x.reps}`)).join(' · ')}</span></div>`).join('')}
           <button class="btn danger small" data-act="del" data-id="${s.id}">${ICON.trash} Delete workout</button></div>` : ''}
       </article>`;
     }).join('') : '<p class="empty">No workouts yet. Log your first session on the Today tab.</p>';
@@ -63,7 +71,7 @@ function exerciseSheet(id) {
   openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${best && best.weight != null ? `Best ${fmtKg(best.weight)} kg × ${best.reps} (${fmtDate(best.date, { weekday: false })})` : h.length ? 'Bodyweight' : 'No sessions yet'}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
     ${readyToProgress(ex) ? `<div class="badge ready">${ICON.up} Ready to progress — ${esc(PROGRAM.progressionRule)}</div>` : ''}
     ${pts.length > 1 ? `<div class="spark-wrap"><span class="muted small">${ex.bodyweight ? 'Top reps' : 'Top weight (kg)'} per session</span>${sparkline(pts)}</div>` : ''}
-    <div class="card list flat">${h.length ? h.slice(0, 10).map((x) => `<div class="list-row static"><span>${fmtDate(x.date)}</span><span class="muted">${x.sets.map((s) => (s.weight == null ? s.reps : `${fmtKg(s.weight)}×${s.reps}`)).join(' · ')}</span></div>`).join('') : '<p class="empty">Log this exercise to see its history.</p>'}</div>
+    <div class="card list flat">${h.length ? h.slice(0, 10).map((x) => `<div class="list-row static"><span>${fmtDate(x.date)}${equipName(ex, x.equip) ? ` <span class="equip-tag">· ${esc(equipName(ex, x.equip))}</span>` : ''}</span><span class="muted">${x.sets.map((s) => (s.weight == null ? s.reps : `${fmtKg(s.weight)}×${s.reps}`)).join(' · ')}</span></div>`).join('') : '<p class="empty">Log this exercise to see its history.</p>'}</div>
     <details class="mini-map"><summary>${ICON.body} Muscles worked</summary>${bodyMap(exerciseLevels(ex))}</details>`);
 }
 

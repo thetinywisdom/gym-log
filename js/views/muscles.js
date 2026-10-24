@@ -1,5 +1,5 @@
-import { PROGRAM, MUSCLES, repLabel, allExercises, setsLabel } from '../program.js';
-import { sessionExercises, weeklyMuscleSets, sessionsInWeek } from '../logic.js';
+import { PROGRAM, MUSCLES, repLabel, allExercises, setsLabel, withEquip } from '../program.js';
+import { sessionExercises, weeklyMuscleSets, sessionsInWeek, equipChoice } from '../logic.js';
 import { bodyMap, exerciseLevels, combinedLevels } from '../muscles.js';
 import { muscleListHtml, watchHtml } from './log.js';
 import { openWatch } from '../watch.js';
@@ -71,7 +71,7 @@ export function musclesClick(e, el, rerender) {
   else if (a === 'm-ex') { st.exId = b.dataset.ex; st.mode = 'exercise'; }
   else if (a === 'm-wk') st.monday = addDays(st.monday, +b.dataset.d);
   else if (a === 'm-opt') { st.optional = b.checked; }
-  else if (a === 'watch') { if (e.type === 'click') { const ex = allExercises().find((x) => x.id === b.dataset.ex); if (ex) openWatch([{ id: ex.id, name: ex.name }]); } return; }
+  else if (a === 'watch') { if (e.type === 'click') { const ex = allExercises().find((x) => x.id === b.dataset.ex); if (ex) { const v = ex.equip ? withEquip(ex, equipChoice(ex)) : ex; openWatch([{ id: v.id, name: v.name, anim: v.anim }]); } } return; }
   else return;
   rerender();
   if (a === 'm-ex') el.querySelector('.pill.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });

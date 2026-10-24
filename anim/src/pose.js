@@ -66,6 +66,54 @@ function mix(a, b, t, f) {
 
 export function lerpPose(a, b, t) { return mix(a, b, t, (x, y) => x + (y - x) * t); }
 
+// ---------- allocation-free variants (per-frame playback) ----------
+// They write into `out`, reusing only containers they created themselves (tracked in OWNED), so
+// keyframe arrays/objects that are passed through by reference are never mutated.
+const OWNED = new WeakSet();
+const own = (o) => (OWNED.add(o), o);
+const isNumArr = (v) => Array.isArray(v) && typeof v[0] === 'number';
+
+/** lerpPose(a, b, t) written into `out` (pass the previous return value). */
+export function lerpPoseInto(out, a, b, t) {
+  if (typeof a === 'number' && typeof b === 'number') return a + (b - a) * t;
+  if (isNumArr(a) && isNumArr(b) && a.length === b.length) {
+    const o = Array.isArray(out) && OWNED.has(out) && out.length === a.length ? out : own(new Array(a.length));
+    for (let i = 0; i < a.length; i++) o[i] = a[i] + (b[i] - a[i]) * t;
+    return o;
+  }
+  if (isObj(a) && isObj(b)) {
+    const o = isObj(out) && OWNED.has(out) ? out : own({});
+    for (const k in o) if (!(k in a) && !(k in b)) delete o[k];
+    for (const k in a) o[k] = k in b ? lerpPoseInto(o[k], a[k], b[k], t) : a[k];
+    for (const k in b) if (!(k in a)) o[k] = b[k];
+    return o;
+  }
+  return t < 0.5 ? a : b;
+}
+
+/** splinePose(p0, p1, p2, p3, t) written into `out`. */
+export function splinePoseInto(out, p0, p1, p2, p3, t) {
+  const t2 = t * t, t3 = t2 * t;
+  const cr = (a, b, c, d) => 0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+  const walk = (o, a, b, c, d) => {
+    if (typeof b === 'number' && typeof c === 'number') return cr(num(a, b), b, c, num(d, c));
+    if (isNumArr(b) && isNumArr(c) && b.length === c.length) {
+      const r = Array.isArray(o) && OWNED.has(o) && o.length === b.length ? o : own(new Array(b.length));
+      for (let i = 0; i < b.length; i++) r[i] = cr(arrNum(a, i, b[i]), b[i], c[i], arrNum(d, i, c[i]));
+      return r;
+    }
+    if (isObj(b) && isObj(c)) {
+      const r = isObj(o) && OWNED.has(o) ? o : own({});
+      for (const k in r) if (!(k in b) && !(k in c)) delete r[k];
+      for (const k in b) r[k] = k in c ? walk(r[k], a?.[k], b[k], c[k], d?.[k]) : b[k];
+      for (const k in c) if (!(k in b)) r[k] = c[k];
+      return r;
+    }
+    return t < 0.5 ? b : c;
+  };
+  return walk(out, p0, p1, p2, p3);
+}
+
 /** Centripetal-ish uniform Catmull-Rom through p1→p2, using neighbours p0, p3 (all full poses). */
 export function splinePose(p0, p1, p2, p3, t) {
   const t2 = t * t, t3 = t2 * t;

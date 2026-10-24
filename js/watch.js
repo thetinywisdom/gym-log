@@ -8,9 +8,10 @@ import { esc } from './utils.js';
 let player = null;      // shared player instance
 let loading = null;     // Promise while the module/player is being created
 let current = null;     // app exercise id currently shown
-let tabs = [];          // [{ id, name }]
+let tabs = [];          // [{ id, name, anim? }]  anim: animation id when it differs (equipment variant)
 
 export const canWatch = (id) => hasAnimation(id);
+const animOf = (id) => resolveId(tabs.find((t) => t.id === id)?.anim || id);
 
 function root() { return document.getElementById('watch'); }
 
@@ -25,7 +26,7 @@ async function show(id) {
   const stage = root().querySelector('.watch-stage');
   if (!player) {
     loading ||= import('../anim/src/player.js').then(({ createExercisePlayer }) => {
-      player = createExercisePlayer(stage, resolveId(id), { autoplay: true, tint: 'all' });
+      player = createExercisePlayer(stage, animOf(id), { autoplay: true, tint: 'all' });
       return player.ready;
     });
     try { await loading; } catch (err) {
@@ -35,7 +36,7 @@ async function show(id) {
     }
     if (current !== id) return show(current);
   } else {
-    await player.setExercise(resolveId(id));
+    await player.setExercise(animOf(id));
   }
   if (root().classList.contains('open') && current === id) player.play();
 }
@@ -46,7 +47,7 @@ async function show(id) {
  * @param {string} [startId]
  */
 export function openWatch(list, startId) {
-  tabs = list.filter((x) => canWatch(x.id));
+  tabs = list.filter((x) => canWatch(x.anim || x.id));
   if (!tabs.length) return;
   const r = root();
   const id = tabs.some((t) => t.id === startId) ? startId : tabs[0].id;
@@ -85,4 +86,4 @@ export function initWatch() {
 }
 
 /** QA/debug hook. */
-export const _watchState = () => ({ player, current, tabs: tabs.map((t) => t.id) });
+export const _watchState = () => ({ player, current, anim: current && animOf(current), tabs: tabs.map((t) => t.id) });

@@ -8,6 +8,14 @@ const _a = V(), _b = V(), _t = V(), _p = V(), _u = V(), _dir = V(), _x = V(), _y
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _qp = new THREE.Quaternion(), _e = new THREE.Euler();
 const SOLE = [[-0.035, 0.04, 0.13], [-0.066, 0.012, 0.132]]; // shoe + sole ellipses (YZ outline) in ankle space
 const _AX = new THREE.Vector3(1, 0, 0), _AY = new THREE.Vector3(0, 1, 0), _AZ = new THREE.Vector3(0, 0, 1);
+// per-frame scratch (apply() must not allocate)
+const _g = V(), _pole = V(), _wg = V(), _s1 = V(), _s2 = V(), _s3 = V(), _s4 = V(), _s5 = V(), _s6 = V(), _s7 = V();
+const _M = new THREE.Matrix4(), _M2 = new THREE.Matrix4(), _M3 = new THREE.Matrix4(), _qh = new THREE.Quaternion();
+const _ONE = new THREE.Vector3(1, 1, 1), _ZERO3 = [0, 0, 0], _RAD = [0, 0, 0];
+const _HX_L = new THREE.Vector3(0, 1, 0), _HX_R = new THREE.Vector3(0, -1, 0), _HY = new THREE.Vector3(0, 0, -1);
+const _HQ = { L: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(_HX_L, _HY, new THREE.Vector3().crossVectors(_HX_L, _HY))),
+  R: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(_HX_R, _HY, new THREE.Vector3().crossVectors(_HX_R, _HY))) };
+const rad3 = (r) => { _RAD[0] = (r[0] || 0) * D2R; _RAD[1] = (r[1] || 0) * D2R; _RAD[2] = (r[2] || 0) * D2R; return _RAD; };
 const qAxis = (axis, deg, out = new THREE.Quaternion()) => out.setFromAxisAngle(axis, deg * D2R);
 
 /**
@@ -66,28 +74,28 @@ export class Rig {
 
   _placeEquip(id, ep) {
     const e = this.equip[id]; if (!e) return;
-    const M = new THREE.Matrix4();
+    const M = _M.identity();
     if (ep.space === 'hands') {
-      const gl = this._gripWorld('L', V()), gr = this._gripWorld('R', V());
-      const mid = gl.clone().add(gr).multiplyScalar(0.5);
-      let up = _AY.clone();
+      const gl = this._gripWorld('L', _s1), gr = this._gripWorld('R', _s2);
+      const mid = _s3.copy(gl).add(gr).multiplyScalar(0.5);
+      const up = _s4.copy(_AY);
       if (ep.align === 'arm') { // bell/bar continues the line of the forearms
-        up = this.J.wristL.getWorldPosition(V()).sub(gl).add(this.J.wristR.getWorldPosition(V()).sub(gr)).normalize();
+        up.copy(this.J.wristL.getWorldPosition(_s5).sub(gl)).add(this.J.wristR.getWorldPosition(_s6).sub(gr)).normalize();
       }
-      const xAxis = gl.clone().sub(gr); xAxis.addScaledVector(up, -xAxis.dot(up)).normalize();
-      const zAxis = new THREE.Vector3().crossVectors(xAxis, up).normalize();
-      const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis);
+      const xAxis = _s5.copy(gl).sub(gr); xAxis.addScaledVector(up, -xAxis.dot(up)).normalize();
+      const zAxis = _s6.crossVectors(xAxis, up).normalize();
+      const yAxis = _s7.crossVectors(zAxis, xAxis);
       M.makeBasis(xAxis, yAxis, zAxis).setPosition(mid);
-      if (ep.rot) M.multiply(new THREE.Matrix4().makeRotationFromEuler(_e.set(...ep.rot.map((d) => d * D2R), 'YXZ')));
-      if (ep.pos) M.multiply(new THREE.Matrix4().makeTranslation(...ep.pos));
-      if (ep.at) { const loc = this._anchorLocal(e, ep.at); M.multiply(new THREE.Matrix4().makeTranslation(-loc.x, -loc.y, -loc.z)); }
+      if (ep.rot) { const r = rad3(ep.rot); M.multiply(_M2.makeRotationFromEuler(_e.set(r[0], r[1], r[2], 'YXZ'))); }
+      if (ep.pos) M.multiply(_M2.makeTranslation(ep.pos[0], ep.pos[1], ep.pos[2]));
+      if (ep.at) { const loc = this._anchorLocal(e, ep.at); M.multiply(_M2.makeTranslation(-loc.x, -loc.y, -loc.z)); }
     } else {
       this._space(ep.space, M);
-      const L = new THREE.Matrix4().compose(_tmp.fromArray(ep.pos || [0, 0, 0]), _q.setFromEuler(_e.set(...(ep.rot || [0, 0, 0]).map((d) => d * D2R), 'YXZ')), _tmp2.set(1, 1, 1));
-      M.multiply(L);
+      const r = rad3(ep.rot || _ZERO3);
+      M.multiply(_M2.compose(_tmp.fromArray(ep.pos || _ZERO3), _q.setFromEuler(_e.set(r[0], r[1], r[2], 'YXZ')), _ONE));
       if (ep.at) { // pos refers to an anchor (e.g. the handle), not the object origin
         const loc = this._anchorLocal(e, ep.at);
-        M.multiply(new THREE.Matrix4().makeTranslation(-loc.x, -loc.y, -loc.z));
+        M.multiply(_M2.makeTranslation(-loc.x, -loc.y, -loc.z));
       }
     }
     M.decompose(e.object.position, e.object.quaternion, _tmp);
@@ -135,7 +143,7 @@ export class Rig {
       _tmp.fromArray(leg.target); if (_tmp.y < 0.075) _tmp.y = 0.075; // spline overshoot must not push the ankle into the floor
       J['hip' + s].getWorldPosition(_tmp2);
       _tmp2.add(_tmp).multiplyScalar(0.5).add(_u.fromArray(leg.pole || [0, 0, 1]));
-      this.err['leg' + s] = solveTwoBone(J['hip' + s], J['knee' + s], DIM.thigh, DIM.shin, _tmp.clone(), _tmp2.clone(), 'leg');
+      this.err['leg' + s] = solveTwoBone(J['hip' + s], J['knee' + s], DIM.thigh, DIM.shin, _wg.copy(_tmp), _s7.copy(_tmp2), 'leg');
       const f = leg.foot || [0, 0, 0];
       const pitch = this._floorPitch(J['ankle' + s], f);
       _q.setFromEuler(_e.set(pitch * D2R, f[1] * D2R, (f[2] || 0) * D2R, 'YXZ'));
@@ -156,18 +164,16 @@ export class Rig {
         this.err['arm' + s] = 0;
         continue;
       }
-      const goal = V().fromArray(a.target);
-      if (a.space === 'shoulderHang') goal.add(sh.getWorldPosition(V()));
-      else if (a.space && a.space !== 'root') goal.applyMatrix4(this._space(a.space, new THREE.Matrix4()));
-      const pole = V();
+      const goal = _g.fromArray(a.target);
+      if (a.space === 'shoulderHang') goal.add(sh.getWorldPosition(_s1));
+      else if (a.space && a.space !== 'root') goal.applyMatrix4(this._space(a.space, _M3));
+      const pole = _pole;
       const l1 = DIM.upperArm, l2 = DIM.forearm;
-      let wristGoal = goal.clone();
       if (a.palm === 'down') {
         // left palm faces -X at rest, fingers -Y. Palm down, fingers forward.
-        const X = sg > 0 ? V().set(0, 1, 0) : V().set(0, -1, 0), Y = V().set(0, 0, -1), Z = V().crossVectors(X, Y);
-        const handQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
-        wristGoal = goal.clone().add(V().set(0, DIM.grip, 0).applyQuaternion(handQ));
-        sh.getWorldPosition(pole).add(wristGoal).multiplyScalar(0.5).add(V().fromArray(a.pole));
+        const handQ = _qh.copy(_HQ[s]);
+        const wristGoal = _wg.copy(goal).add(_s1.set(0, DIM.grip, 0).applyQuaternion(handQ));
+        sh.getWorldPosition(pole).add(wristGoal).multiplyScalar(0.5).add(_s2.fromArray(a.pole));
         this.err['arm' + s] = solveTwoBone(sh, el, l1, l2, wristGoal, pole, 'arm');
         el.getWorldQuaternion(_qp); wr.quaternion.copy(_qp.invert()).multiply(handQ);
         continue;
@@ -175,14 +181,14 @@ export class Rig {
       wr.quaternion.copy(qAxis(_AY, -sg * (a.pron || 0)));
       // the hand only pronates about the forearm axis, so the grip is collinear with the forearm:
       // solve the chain with an extended lower bone straight to the grip target.
-      sh.getWorldPosition(pole).add(goal).multiplyScalar(0.5).add(V().fromArray(a.pole));
+      sh.getWorldPosition(pole).add(goal).multiplyScalar(0.5).add(_s2.fromArray(a.pole));
       solveTwoBone(sh, el, l1, l2 + DIM.grip, goal, pole, 'arm');
-      this.err['arm' + s] = this._gripWorld(s, V()).distanceTo(goal);
+      this.err['arm' + s] = this._gripWorld(s, _s3).distanceTo(goal);
     }
     root.updateMatrixWorld(true);
 
     for (const [id, ep] of deferred) this._placeEquip(id, ep);
-    for (const e of Object.values(this.equip)) if (e.cableTo) { const b = Object.values(this.equip).find((x) => x.anchors?.grip && x !== e); if (b) e.cableTo(b.object.getWorldPosition(V())); }
+    for (const e of Object.values(this.equip)) if (e.cableTo) { const b = Object.values(this.equip).find((x) => x.anchors?.grip && x !== e); if (b) e.cableTo(b.object.getWorldPosition(_s1)); }
   }
 
   /** Lowest point (y) of any mannequin vertex bound — used by QA to check floor penetration. */

@@ -11,6 +11,7 @@ export const EXERCISES = {
   'triceps-overhead': () => import('./triceps-overhead.js'),
   'triceps-pushdown': () => import('./triceps-pushdown.js'),
   'hammer-curl': () => import('./hammer-curl.js'),
+  'hammer-curl-kb': () => import('./hammer-curl-kb.js'),
   'chest-press': () => import('./chest-press.js'),
   'iso-row': () => import('./iso-row.js'),
   'lat-pulldown': () => import('./lat-pulldown.js'),

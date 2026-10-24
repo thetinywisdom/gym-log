@@ -15,7 +15,8 @@ await ctx.addInitScript(() => {
 });
 const page = await ctx.newPage();
 const threeReqs = [];
-page.on('request', (r) => { if (/three\.module/.test(r.url())) threeReqs.push(r.url()); });
+const orbitReqs = [];
+page.on('request', (r) => { if (/three\.module/.test(r.url())) threeReqs.push(r.url()); if (/OrbitControls/i.test(r.url())) orbitReqs.push(r.url()); });
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 
@@ -52,12 +53,69 @@ await page.locator('.ex[data-ex="kb-halo"] [data-act="watch"]').tap(); await wai
 await page.keyboard.press('Escape'); await page.waitForTimeout(300);
 ok('Escape closes player', !(await watching()));
 
-// muscle sheet → watch
-await page.locator('.ex[data-ex="goblet-squat"] [data-act="ex-map"]').first().tap();
-await page.waitForSelector('#sheet.open .watch-open');
-await page.tap('#sheet .watch-open'); await waitReady(); await page.waitForTimeout(300);
-ok('Muscle sheet → Watch opens player, sheet closed', (await watching()) && !(await page.evaluate(() => document.getElementById('sheet').classList.contains('open'))));
+// --- v1.3.1: no camera interaction, Front/Back toggle, perf ---
+const P = () => page.evaluate(() => import(new URL('js/watch.js', location.href).href).then((m) => { const p = m._watchState().player; return { pos: p.cameraPosition, facing: p.facing, anim: m._watchState().anim }; }));
+const facingOn = () => page.$eval('.xp-cam button.on', (b) => b.dataset.facing);
+ok('No OrbitControls requested', orbitReqs.length === 0, orbitReqs.join(','));
+ok('No OrbitControls in the player source', !/OrbitControls/.test(await page.evaluate(() => fetch(new URL('anim/src/player.js', location.href)).then((r) => r.text()))));
+await page.locator('.ex[data-ex="kb-rdl"] [data-act="watch"]').tap(); await waitReady(); await page.waitForTimeout(300);
+const cv = await page.$eval('.watch-stage canvas', (c) => { const cs = getComputedStyle(c); return { pe: cs.pointerEvents, ta: cs.touchAction, ratio: c.width / c.clientWidth }; });
+ok('Canvas ignores touch/mouse (no drag/zoom, sheet scroll not captured)', cv.pe === 'none' && cv.ta !== 'none', JSON.stringify(cv));
+ok('pixelRatio capped at 1.5 (DSF 2 device)', cv.ratio <= 1.51, cv.ratio.toFixed(2));
+const segs = await page.$$eval('.xp-cam button', (b) => b.map((x) => x.textContent.trim()));
+ok('Camera toggle is Front | Back', segs.join('|') === 'Front|Back', segs.join('|'));
+const f0 = await P();
+ok('Default view = Front (exercise default camera)', (await facingOn()) === 'front' && f0.facing === 'front');
+// a drag on the stage must not move the camera
+const box = await page.locator('.watch-stage canvas').boundingBox();
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 40, { steps: 6 }); await page.mouse.up();
+await page.mouse.wheel(0, -400); await page.waitForTimeout(200);
+const f0b = await P();
+ok('Drag / wheel on the player does not move the camera', f0b.pos.every((v, i) => Math.abs(v - f0.pos[i]) < 1e-6));
+await page.tap('.xp-cam [data-facing="back"]'); await page.waitForTimeout(290);
+const f1 = await P(); await page.waitForTimeout(300); const f1b = await P();
+const moved = Math.hypot(...f1.pos.map((v, i) => v - f0.pos[i]));
+ok('Back toggle moves the camera behind the figure', f1.facing === 'back' && moved > 1 && f1.pos[2] < 0 && f0.pos[2] > -0.5, `front=${f0.pos.map((v) => v.toFixed(2))} back=${f1.pos.map((v) => v.toFixed(2))}`);
+ok('Switch eases in under 300 ms', f1.pos.every((v, i) => Math.abs(v - f1b.pos[i]) < 1e-3));
+await page.screenshot({ path: SHOTS + '10-back-view.png' });
 await page.tap('[data-act="watch-close"]'); await page.waitForTimeout(300);
+await page.locator('.ex[data-ex="goblet-squat"] [data-act="watch"]').tap(); await waitReady(); await page.waitForTimeout(300);
+const f2 = await P();
+ok('Back persists across exercises (goblet squat opens in Back)', (await facingOn()) === 'back' && f2.facing === 'back' && f2.pos[2] < 0, `${f2.facing} z=${f2.pos[2].toFixed(2)}`);
+await page.tap('.xp-cam [data-facing="front"]'); await page.waitForTimeout(300);
+const f3 = await P();
+ok('Front toggle returns to the default view', f3.facing === 'front' && f3.pos[2] > 0);
+await page.tap('[data-act="watch-close"]'); await page.waitForTimeout(300);
+ok('Rendering pauses when the sheet is closed', await page.evaluate(() => new Promise((res) => {
+  const c = document.querySelector('.watch-stage canvas'); const gl = c.getContext('webgl2') || c.getContext('webgl');
+  let draws = 0; const orig = gl.drawElements; gl.drawElements = function (...a) { draws++; return orig.apply(this, a); };
+  setTimeout(() => { gl.drawElements = orig; res(draws === 0); }, 600);
+})));
+
+// Hammer Curl: ▶ Watch follows the equipment picker
+const hcCard = page.locator('.ex[data-ex="kb-hammer-curl"]');
+await hcCard.locator('[data-act="toggle-opt"]').check(); await page.waitForSelector('.ex[data-ex="kb-hammer-curl"] .equip-pick');
+const watchHammer = async () => { await hcCard.locator('[data-act="watch"]').tap(); await waitReady(); await page.waitForTimeout(400);
+  const sub = await page.evaluate(() => document.querySelector('.watch-stage')?.innerText || ''); const st = await P();
+  await page.tap('[data-act="watch-close"]'); await page.waitForTimeout(300); return { sub, anim: st.anim }; };
+const wDb = await watchHammer();
+ok('Hammer Curl (Dumbbells) → dumbbell animation', wDb.anim === 'hammer-curl' && /Dumbbells/.test(wDb.sub), wDb.anim);
+await hcCard.locator('[data-act="pick-equip"][data-equip="kb"]').tap(); await page.waitForTimeout(200);
+const wKb = await watchHammer();
+ok('Hammer Curl (Kettlebell) → kettlebell animation', wKb.anim === 'hammer-curl-kb' && /Kettlebell/.test(wKb.sub), wKb.anim);
+await hcCard.locator('[data-act="pick-equip"][data-equip="db"]').tap(); await page.waitForTimeout(200);
+const wDb2 = await watchHammer();
+ok('Switch back to Dumbbells → dumbbell animation again', wDb2.anim === 'hammer-curl');
+
+// muscle sheet (human icon) has no Watch control any more (v1.3.1)
+await page.locator('.ex[data-ex="goblet-squat"] .ex-actions [data-act="ex-map"]').tap();
+await page.waitForSelector('#sheet.open .bodymap, #sheet.open svg');
+const sheetWatch = await page.$$eval('#sheet [data-act="watch"], #sheet .watch-open', (n) => n.length);
+const sheetText = await page.textContent('#sheet');
+ok('Muscle sheet has no Watch control', sheetWatch === 0 && !/Watch/i.test(sheetText), `${sheetWatch} controls`);
+await page.tap('#sheet [data-act="sheet-close"]'); await page.waitForTimeout(300);
+ok('Card header ▶ Watch still present', (await page.locator('.ex[data-ex="goblet-squat"] .ex-actions [data-act="watch"][aria-label="Watch demo"]').count()) === 1);
 
 // upper day: pull slot
 await page.evaluate(() => { location.hash = '#/log'; });

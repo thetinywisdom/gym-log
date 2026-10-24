@@ -1,5 +1,5 @@
 // Keyframe clip: named poses + a looping timeline of segments with tempo, easing, cues and work flags.
-import { resolvePose, lerpPose, splinePose, EASE } from './pose.js';
+import { resolvePose, lerpPoseInto, splinePoseInto, EASE } from './pose.js';
 
 export class Clip {
   constructor(def) {
@@ -32,15 +32,19 @@ export class Clip {
     const u = seg.dur > 0 ? Math.min(1, (t - seg.start) / seg.dur) : 1;
     const e = seg.ease(u);
     const from = this.keyAt(i - 1), to = this.keyAt(i);
+    // Interpolated poses are written into one reused object (no per-frame allocation).
+    // The returned sample is only valid until the next sample() call.
     let pose;
     if (from === to) pose = to;
-    else if (this.def.interp === 'spline') pose = splinePose(this.keyAt(i - 2), from, to, this.keyAt(i + 1), e);
-    else pose = lerpPose(from, to, e);
+    else if (this.def.interp === 'spline') pose = this._pose = splinePoseInto(this._pose, this.keyAt(i - 2), from, to, this.keyAt(i + 1), e);
+    else pose = this._pose = lerpPoseInto(this._pose, from, to, e);
     let done = 0; for (let k = 0; k < i; k++) if (this.segs[k].rep) done++;
     const reps = cycle * this.repsPerCycle + (this.countAtEnd ? 0 : done);
     // cue: nearest segment at or before i that has one
     let cue = ''; for (let k = i; k >= i - n; k--) { const c = this.segs[((k % n) + n) % n].cue; if (c) { cue = c; break; } }
-    return { pose, index: i, seg, u, reps, cue, work: seg.work ? 1 : 0, cycle };
+    const r = this._res ||= {};
+    r.pose = pose; r.index = i; r.seg = seg; r.u = u; r.reps = reps; r.cue = cue; r.work = seg.work ? 1 : 0; r.cycle = cycle;
+    return r;
   }
 
   /** time (s) at which the timeline arrives at key `name` (end of the first segment targeting it). */

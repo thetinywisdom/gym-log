@@ -70,7 +70,13 @@ export const PROGRAM = {
           primary: ['chest'], secondary: ['triceps', 'frontDelts', 'abs'] },
         { id: 'kb-triceps-ext', name: 'Triceps Extension (KB)', sets: 2, reps: 12, weight: 11, step: 1.25, optional: true, rest: REST_KB,
           primary: ['triceps'], secondary: [] },
-        { id: 'kb-hammer-curl', name: 'Hammer Curl (KB)', sets: 2, reps: 12, weight: 11, optional: true, rest: REST_KB,
+        // Same id as the old "Hammer Curl (KB)" so its history carries over. Equipment is picked on the card
+        // (remembered per user); untagged older logs count as Kettlebell (legacy).
+        { id: 'kb-hammer-curl', name: 'Hammer Curl', sets: 2, reps: 12, weight: 10, optional: true, rest: REST_KB,
+          equip: { default: 'db', legacy: 'kb', options: [
+            { id: 'db', name: 'Dumbbells', weight: 10, anim: 'hammer-curl' },
+            { id: 'kb', name: 'Kettlebell', weight: 11, kettlebell: true, anim: 'hammer-curl-kb' },
+          ] },
           primary: ['brachialis', 'biceps'], secondary: ['forearms'] },
       ],
     },
@@ -182,6 +188,21 @@ export function resolveSlot(slot, choice, workoutId) {
 }
 
 export function findExercise(id) { return allExercises().find((e) => e.id === id); }
+
+// ---------- equipment variants (e.g. hammer curl: Dumbbells | Kettlebell) ----------
+/** The variant for an equipment id (falls back to the exercise default). */
+export function equipOption(ex, equipId) {
+  const eq = ex?.equip; if (!eq) return null;
+  return eq.options.find((o) => o.id === equipId) || eq.options.find((o) => o.id === eq.default) || eq.options[0];
+}
+/** Equipment of a logged entry: its tag, or the exercise's legacy equipment for untagged older logs. */
+export function entryEquip(ex, entry) { return ex?.equip ? entry?.equip || ex.equip.legacy || ex.equip.default : null; }
+/** Exercise resolved to one equipment variant: plan weight, animation and labels follow the variant. */
+export function withEquip(ex, equipId) {
+  const v = equipOption(ex, equipId);
+  if (!v) return ex;
+  return { ...ex, weight: v.weight, kettlebell: !!v.kettlebell, equipId: v.id, equipName: v.name, anim: v.anim };
+}
 export function repRange(ex) { return Array.isArray(ex.reps) ? ex.reps : [ex.reps, ex.reps]; }
 /** Rest label: [120,120] → "2 min", [90,90] → "90s", [60,90] → "60–90s". */
 export function restLabel([a, b]) {

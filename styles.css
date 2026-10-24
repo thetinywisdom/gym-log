@@ -329,3 +329,25 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid 
 .watch-stage { flex: 1; min-height: 0; position: relative; }
 .watch-stage .xp { position: absolute; inset: 0; min-height: 0; }
 .watch-err { color: var(--muted); text-align: center; padding: 40px 16px; }
+
+/* Hammer Curl equipment picker (Dumbbells | Kettlebell) — same look as the pull-slot picker */
+.ex .equip-pick { margin: 2px 0 10px; }
+.equip-tag { color: var(--muted); font-weight: 400; }
+
+/* Card header (v1.3.1): title truncates; ▶ Watch + muscles icon buttons sit top-right */
+.ex-head { align-items: flex-start; }
+.ex-title { min-width: 0; }
+.ex-name-row { display: flex; align-items: center; min-width: 0; }
+.ex-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ex-name-row .tag { flex: none; }
+.ex-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.icon-btn.tool { width: 40px; height: 40px; border-radius: 12px; background: var(--card2); color: var(--text); border: 1px solid var(--line);
+  transition: background-color .15s, border-color .15s, transform .08s; -webkit-tap-highlight-color: transparent; }
+.icon-btn.tool svg { width: 20px; height: 20px; }
+.icon-btn.tool.watch { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--card2)); border-color: rgba(184, 240, 74, 0.3); }
+.icon-btn.tool.watch svg { width: 16px; height: 16px; }
+@media (hover: hover) { .icon-btn.tool:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--accent); } }
+.icon-btn.tool:active { transform: scale(0.94); background: color-mix(in srgb, var(--accent) 22%, var(--card2)); }
+.icon-btn.tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ex-actions .switch { margin-left: 4px; }
+.tag.opt-tag { margin: 0 6px 0 0; vertical-align: 1px; }

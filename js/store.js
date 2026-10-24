@@ -13,8 +13,8 @@ function defaultSchedule(mode = '3day') {
 function fresh() {
   const now = Date.now();
   return {
-    schema: 3,
-    settings: { planMode: '3day', sound: true, vibrate: true, keepAwake: true, updatedAt: now },
+    schema: 4,
+    settings: { planMode: '3day', sound: true, vibrate: true, keepAwake: true, equip: {}, updatedAt: now },
     schedule: { items: defaultSchedule('3day'), updatedAt: now },
     sessions: {},      // id -> session
     deleted: {},       // id -> deletedAt (tombstones, for sync)
@@ -43,9 +43,16 @@ export function migrate(st) {
     }
     st.schema = 3;
   }
-  if (st.draft && typeof st.draft === 'object') {
-    st.draft.choices ||= {}; st.draft.optionalOn ||= {}; st.draft.sets ||= {};
+  if (st.schema < 4) {
+    // v4 (1.3.1): Hammer Curl gets a Dumbbells | Kettlebell picker. A draft started before the update
+    // was the kettlebell version, so keep it on Kettlebell.
+    if (st.draft?.sets?.['kb-hammer-curl']) (st.draft.equip ||= {})['kb-hammer-curl'] ||= 'kb';
+    st.schema = 4;
   }
+  if (st.draft && typeof st.draft === 'object') {
+    st.draft.choices ||= {}; st.draft.optionalOn ||= {}; st.draft.sets ||= {}; st.draft.equip ||= {};
+  }
+  if (st.settings) st.settings.equip ||= {};
   return st;
 }
 

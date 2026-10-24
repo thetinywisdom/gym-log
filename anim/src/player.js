@@ -1,6 +1,5 @@
 // createExercisePlayer(container, exerciseId, opts) — self-contained 3D exercise demo with HUD.
 import * as THREE from '../vendor/three.module.min.js';
-import { OrbitControls } from '../vendor/OrbitControls.js';
 import { createMannequin, MUSCLES } from './mannequin.js';
 import { createEquipment } from './equipment.js';
 import { Rig } from './rig.js';
@@ -8,11 +7,30 @@ import { Clip } from './clip.js';
 import { loadExercise } from '../exercises/index.js';
 
 const VIEWS = { front: [0, 0.1, 1], side: [-1, 0.1, 0], '45': [-0.72, 0.16, 0.7], back: [0, 0.12, -1] };
+const CAM_EASE = 0.25; // s — Front/Back switch
+
+// No user camera interaction (no orbit / zoom / pan): the camera only moves via the Front/Back toggle.
+// The Front/Back choice is remembered for the browser session, across exercises and player instances.
+let sessionFacing = null;
+const FACING_KEY = 'xp.facing';
+function getFacing() {
+  if (sessionFacing) return sessionFacing;
+  try { sessionFacing = sessionStorage.getItem(FACING_KEY); } catch { /* private mode */ }
+  return (sessionFacing = sessionFacing === 'back' ? 'back' : 'front');
+}
+function saveFacing(f) { sessionFacing = f; try { sessionStorage.setItem(FACING_KEY, f); } catch { /* ignore */ } }
+
+/** Mirrored view behind the figure: front ↔ back, and side / 45° views swing round to the rear quarter
+ *  on the same side so traps, lats, glutes and hamstrings face the camera. */
+export function backDir(d) {
+  const z = d[2] > 0.3 ? -d[2] : -Math.max(0.7, Math.abs(d[2]));
+  return [d[0] * 0.7, d[1] + 0.02, z];
+}
 
 const CSS = `
 .xp{position:relative;width:100%;height:100%;min-height:320px;overflow:hidden;border-radius:18px;
  background:radial-gradient(120% 80% at 50% 35%,#1b2029 0%,#0d0f13 70%);color:#eef0f4;font:500 14px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;user-select:none;-webkit-user-select:none}
-.xp canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
+.xp canvas{display:block;width:100%;height:100%;pointer-events:none;touch-action:auto;outline:none}
 .xp-top{position:absolute;left:14px;right:14px;top:12px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;gap:10px}
 .xp-title{font-weight:700;font-size:16px;letter-spacing:.01em}
 .xp-sub{color:#8d94a3;font-size:12px;margin-top:2px}
@@ -76,14 +94,14 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
    <div class="xp-phase"></div><div class="xp-cue swap"></div>
    <div class="xp-bar"><button class="xp-play" aria-label="Play/pause">${ICON.pause}</button>
     <div class="xp-seg xp-speed"><button data-speed="0.5">0.5×</button><button data-speed="1">1×</button></div>
-    <div class="xp-seg xp-cam"><button data-cam="front">Front</button><button data-cam="45">45°</button><button data-cam="side">Side</button></div></div>`;
+    <div class="xp-seg xp-cam" role="radiogroup" aria-label="Camera"><button role="radio" data-facing="front">Front</button><button role="radio" data-facing="back">Back</button></div></div>`;
   container.appendChild(el);
   const $ = (s) => el.querySelector(s);
   if (!o.showHud) for (const s of ['.xp-top', '.xp-bar', '.xp-cue', '.xp-phase']) $(s).style.display = 'none';
   const canvas = $('canvas');
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(o.pixelRatio || window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(o.pixelRatio || window.devicePixelRatio || 1, 1.5)); // capped for phones
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   const scene = new THREE.Scene();
@@ -98,13 +116,11 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
   blob.rotation.x = -Math.PI / 2; blob.position.y = 0.003; blob.renderOrder = -1; scene.add(blob);
 
   const man = createMannequin(); scene.add(man.root);
-  const controls = new OrbitControls(camera, canvas);
-  controls.enablePan = false; controls.enableDamping = true; controls.dampingFactor = 0.12;
-  controls.minDistance = 1.2; controls.maxDistance = 8; controls.maxPolarAngle = Math.PI * 0.53; controls.rotateSpeed = 0.8;
+  const camTarget = new THREE.Vector3();
 
   let def = null, clip = null, rig = null, equip = {}, fit = null;
-  let playing = !!o.autoplay, speed = o.speed, time = 0, view = o.view || null, lastReps = -1, lastCue = null, lastIdx = -1;
-  let moving = false, raf = 0, last = 0, visible = true, disposed = false, camAnim = null;
+  let playing = !!o.autoplay, speed = o.speed, time = 0, view = o.view || null, facing = getFacing(), lastReps = -1, lastCue = null, lastIdx = -1, lastPct = -1;
+  let raf = 0, last = 0, visible = true, disposed = false, camAnim = null;
   const act = Object.fromEntries(MUSCLES.map((m) => [m, 0]));
   let pulse = 0;
   const listeners = {};
@@ -119,9 +135,8 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
   };
   const ro = new ResizeObserver(resize); ro.observe(el);
   const io = new IntersectionObserver((es) => { visible = es[0].isIntersecting; requestFrame(); }, { threshold: 0.01 }); io.observe(el);
-  const onVis = () => requestFrame(); document.addEventListener('visibilitychange', onVis);
-  controls.addEventListener('change', () => requestFrame());
-  controls.addEventListener('start', () => { camAnim = null; });
+  const onVis = () => { if (document.hidden) { if (raf) cancelAnimationFrame(raf); raf = 0; last = 0; } else requestFrame(); };
+  document.addEventListener('visibilitychange', onVis);
 
   // ---------- exercise loading ----------
   let loadTok = 0;
@@ -144,7 +159,7 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
     $('.xp-sub').textContent = d.subtitle || '';
     buildPhaseBar();
     computeFit();
-    setView(o.view || d.camera?.view || 'side', false);
+    view = o.view || d.camera?.view || 'side'; setFacing(getFacing(), false);
     setSpeed(speed);
     $('.xp-load').style.display = 'none';
     if (d.startKey) time = clip.timeOfKey(d.startKey);
@@ -169,8 +184,9 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
     fit = { box, center: box.getCenter(new THREE.Vector3()), size: box.getSize(new THREE.Vector3()) };
   }
 
-  function viewPose(name) {
-    const dir = new THREE.Vector3(...(def.camera?.dirs?.[name] || VIEWS[name] || VIEWS.side)).normalize();
+  function viewPose(name, back) {
+    const base = def.camera?.dirs?.[name] || VIEWS[name] || VIEWS.side;
+    const dir = new THREE.Vector3(...(back ? def.camera?.dirs?.back || backDir(base) : base)).normalize();
     const target = fit.center.clone().add(new THREE.Vector3(...(def.camera?.offset || [0, 0, 0])));
     target.y -= fit.size.y * 0.04; // leave room for the HUD
     const up = new THREE.Vector3(0, 1, 0);
@@ -187,13 +203,18 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
     return { pos: target.clone().addScaledVector(dir, dist), target };
   }
 
-  function setView(name, animate = true) {
-    view = name;
-    el.querySelectorAll('.xp-cam button').forEach((b) => b.classList.toggle('on', b.dataset.cam === name));
+  /** Base view of the exercise ('front' | 'side' | '45' | 'back'); Front/Back mirrors around it. */
+  function setView(name, animate = true) { view = name; placeCamera(animate); }
+  function setFacing(f, animate = true) {
+    facing = f === 'back' ? 'back' : 'front';
+    el.querySelectorAll('.xp-cam button').forEach((b) => { const on = b.dataset.facing === facing; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    placeCamera(animate);
+  }
+  function placeCamera(animate) {
     if (!fit) return;
-    const v = viewPose(name);
-    if (animate) camAnim = { t: 0, fromPos: camera.position.clone(), fromTarget: controls.target.clone(), ...v };
-    else { camera.position.copy(v.pos); controls.target.copy(v.target); controls.update(); }
+    const v = viewPose(view, facing === 'back');
+    if (animate) camAnim = { t: 0, fromPos: camera.position.clone(), fromTarget: camTarget.clone(), ...v };
+    else { camAnim = null; camera.position.copy(v.pos); camTarget.copy(v.target); camera.lookAt(camTarget); }
     requestFrame();
   }
 
@@ -202,6 +223,7 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
 
   // ---------- frame ----------
   const _v = new THREE.Vector3();
+  const BLOB_JOINTS = ['pelvis', 'ankleL', 'ankleR', 'wristL', 'wristR', 'head', 'chest'];
   function renderFrame(dt) {
     if (!clip) return;
     const s = clip.sample(time);
@@ -215,7 +237,7 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
     }
     // blob shadow
     let minX = 9, maxX = -9, minZ = 9, maxZ = -9;
-    for (const j of ['pelvis', 'ankleL', 'ankleR', 'wristL', 'wristR', 'head', 'chest']) {
+    for (const j of BLOB_JOINTS) {
       man.joints[j].getWorldPosition(_v); minX = Math.min(minX, _v.x); maxX = Math.max(maxX, _v.x); minZ = Math.min(minZ, _v.z); maxZ = Math.max(maxZ, _v.z);
     }
     blob.position.set((minX + maxX) / 2, 0.003, (minZ + maxZ) / 2); blob.scale.set(maxX - minX + 0.55, maxZ - minZ + 0.55, 1);
@@ -227,14 +249,15 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
       emit('cue', s.cue);
     }
     const bars = $('.xp-phase').children;
-    if (lastIdx !== s.index) { for (let i = 0; i < bars.length; i++) bars[i].firstChild.style.width = i < s.index ? '100%' : '0'; lastIdx = s.index; }
-    if (bars[s.index]) bars[s.index].firstChild.style.width = (s.u * 100).toFixed(1) + '%';
+    if (lastIdx !== s.index) { lastPct = -1; for (let i = 0; i < bars.length; i++) bars[i].firstChild.style.width = i < s.index ? '100%' : '0'; lastIdx = s.index; }
+    const pct = Math.round(s.u * 200); // 0.5 % steps: only touch the DOM when it changes
+    if (bars[s.index] && pct !== lastPct) { lastPct = pct; bars[s.index].firstChild.style.width = pct / 2 + '%'; }
     if (camAnim) {
-      camAnim.t = Math.min(1, camAnim.t + (dt || 1) / 0.5); const e = 1 - Math.pow(1 - camAnim.t, 3);
-      camera.position.lerpVectors(camAnim.fromPos, camAnim.pos, e); controls.target.lerpVectors(camAnim.fromTarget, camAnim.target, e);
+      camAnim.t = Math.min(1, camAnim.t + (dt || CAM_EASE) / CAM_EASE); const e = 1 - Math.pow(1 - camAnim.t, 3);
+      camera.position.lerpVectors(camAnim.fromPos, camAnim.pos, e); camTarget.lerpVectors(camAnim.fromTarget, camAnim.target, e);
       if (camAnim.t >= 1) camAnim = null;
     }
-    moving = controls.update();
+    camera.lookAt(camTarget);
     renderer.render(scene, camera);
     return s;
   }
@@ -245,14 +268,14 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
     const dt = last ? Math.min(0.1, (ts - last) / 1000) : 0; last = ts;
     if (playing && clip) time += dt * speed;
     renderFrame(dt);
-    if (playing || camAnim || moving) raf = requestAnimationFrame(loop);
+    if (playing || camAnim) raf = requestAnimationFrame(loop);
   }
   function requestFrame() { if (!raf && !disposed && visible && !document.hidden) raf = requestAnimationFrame(loop); }
 
   // ---------- UI events ----------
   $('.xp-play').addEventListener('click', () => setPlaying(!playing));
   $('.xp-speed').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setSpeed(Number(b.dataset.speed)); });
-  $('.xp-cam').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setView(b.dataset.cam); });
+  $('.xp-cam').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && b.dataset.facing !== facing) { saveFacing(b.dataset.facing); setFacing(b.dataset.facing); emit('facing', facing); } });
 
   const ready = load(exerciseId).then(() => { setPlaying(playing); });
 
@@ -262,6 +285,10 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
     get time() { return time; },
     play: () => setPlaying(true), pause: () => setPlaying(false), toggle: () => setPlaying(!playing),
     setSpeed, setView, setExercise: (id) => load(id),
+    /** 'front' | 'back' (remembered for the session). */
+    get facing() { return facing; },
+    setFacing(f, animate = true) { saveFacing(f === 'back' ? 'back' : 'front'); setFacing(f, animate); },
+    get cameraPosition() { return camera.position.toArray(); },
     /** Jump to a time (s at 1x) and render immediately (used by QA). */
     seek(t) { time = t; lastCue = null; const s = renderFrame(0); return s; },
     /** Jump to the moment the timeline reaches a named key pose. */
@@ -283,7 +310,6 @@ export function createExercisePlayer(container, exerciseId, opts = {}) {
     dispose() {
       disposed = true; if (raf) cancelAnimationFrame(raf);
       ro.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', onVis);
-      controls.dispose();
       for (const e of Object.values(equip)) e.dispose?.();
       man.dispose(); floor.geometry.dispose(); floor.material.dispose(); blob.geometry.dispose(); blob.material.dispose(); floorTex.dispose(); blobTex.dispose();
       renderer.dispose(); renderer.forceContextLoss();

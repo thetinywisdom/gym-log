@@ -1,6 +1,6 @@
-import { PROGRAM, getWorkout, repRange, repLabel, restLabel, resolveSlot, MUSCLES, setsLabel, sideOf } from '../program.js';
+import { PROGRAM, getWorkout, repRange, repLabel, restLabel, resolveSlot, MUSCLES, setsLabel, sideOf, withEquip } from '../program.js';
 import { store } from '../store.js';
-import { prefillSets, lastFor, readyToProgress, nextWeight, sessionExercises, programWeek, scheduledOn, nextScheduled, bestFor } from '../logic.js';
+import { prefillSets, lastFor, readyToProgress, nextWeight, sessionExercises, programWeek, scheduledOn, nextScheduled, bestFor, equipChoice } from '../logic.js';
 import { todayISO, fmtDate, addMinutes, esc, fmtKg, uid, DOW_SHORT } from '../utils.js';
 import { ICON, toast, openSheet, closeSheet, startRest, stopRest, keepAwake } from '../ui.js';
 import { bodyMap, exerciseLevels, combinedLevels } from '../muscles.js';
@@ -16,7 +16,7 @@ function defaultWorkout() {
 }
 
 function newDraft(workoutId) {
-  return { id: uid(), workoutId, date: todayISO(), startedAt: Date.now(), choices: {}, optionalOn: {}, sets: {} };
+  return { id: uid(), workoutId, date: todayISO(), startedAt: Date.now(), choices: {}, optionalOn: {}, equip: {}, sets: {} };
 }
 
 function draftHasProgress(d) {
@@ -105,7 +105,7 @@ export function renderLog(el) {
 }
 
 function slotHtml(d, slot) {
-  if (!slot.options) return exerciseCard(d, slot, { ...slot, workout: d.workoutId });
+  if (!slot.options) return exerciseCard(d, slot, { ...(slot.equip ? withEquip(slot, equipChoice(slot, d.equip)) : slot), workout: d.workoutId });
   const choice = slotChoice(slot, d.choices[slot.id]);
   const exs = resolveSlot(slot, choice, d.workoutId);
   const btns = [...slot.options.map((o) => [o.id, o.name]), ...(slot.bothSets ? [['both', slot.bothLabel || 'Both']] : [])];
@@ -122,15 +122,28 @@ function slotChoice(slot, c) {
   return slot.options.some((o) => o.id === c) ? c : slot.options[0].id;
 }
 
+/** "Dumbbells · 10 kg each": the equipment and the weight you use with it (last logged, else plan). */
+function equipLine(ex, last) {
+  const w = last?.sets.find((s) => s.weight != null)?.weight ?? ex.weight;
+  return `${ex.equipName}${w != null ? ` · ${fmtKg(w)} kg each` : ''}`;
+}
+
+function equipPicker(ex) {
+  return `<div class="seg small slot-pick equip-pick" role="radiogroup" aria-label="${esc(ex.name)} equipment">${ex.equip.options.map((o) =>
+    `<button role="radio" aria-checked="${o.id === ex.equipId}" class="${o.id === ex.equipId ? 'on' : ''}" data-act="pick-equip" data-ex="${ex.id}" data-equip="${o.id}">${esc(o.name)}</button>`).join('')}</div>`;
+}
+
 function exerciseCard(d, slot, ex) {
   const isOff = slot.optional && !d.optionalOn[slot.id];
   const sets = ensureSets(d, ex);
-  const last = lastFor(ex.id);
+  const last = lastFor(ex.id, ex.equipId);
   const ready = readyToProgress(ex);
   const allDone = sets.length && sets.every((s) => s.done);
-  const target = `${setsLabel(ex)}${ex.bodyweight ? ' · bodyweight' : ex.weight != null ? ` · ${fmtKg(ex.weight)} kg` : ''}`;
+  const target = ex.equipId ? `${setsLabel(ex)} · ${equipLine(ex, last)}`
+    : `${setsLabel(ex)}${ex.bodyweight ? ' · bodyweight' : ex.weight != null ? ` · ${fmtKg(ex.weight)} kg` : ''}`;
   const lastTxt = last ? `Last ${fmtDate(last.date, { weekday: false })}: ${last.sets.map((s) => (ex.bodyweight || s.weight == null ? s.reps : `${fmtKg(s.weight)}×${s.reps}`)).join(', ')}`
-    : ex.bodyweight ? 'First time' : ex.weight == null ? 'First time — type the weight you use' : 'First time — plan weight prefilled';
+    : ex.bodyweight ? 'First time' : ex.weight == null ? 'First time — type the weight you use'
+    : ex.equipId ? `First time with ${ex.equipName.toLowerCase()} — ${fmtKg(ex.weight)} kg each prefilled` : 'First time — plan weight prefilled';
   let readyHtml = '';
   const lw0 = ready ? (last.sets[0].weight ?? ex.weight) : null;
   if (ready && !ex.bodyweight && lw0 == null) readyHtml = `<span class="badge ready">${ICON.up} Ready to progress · add weight</span>`;
@@ -143,16 +156,18 @@ function exerciseCard(d, slot, ex) {
   return `<article class="ex card ${allDone ? 'all-done' : ''} ${isOff ? 'off' : ''} ${slot.options ? 'in-slot' : ''}" data-ex="${ex.id}" data-slot="${slot.id}">
     <header class="ex-head">
       <button class="ex-title" data-act="ex-map" data-ex="${ex.id}" aria-label="Show muscles for ${esc(ex.name)}">
-        <span class="ex-name">${esc(ex.name)}${slot.optional ? ' <span class="tag">optional</span>' : ''}</span>
-        <span class="ex-target">${esc(target)} · rest ${restLabel(ex.rest)}</span>
+        <span class="ex-name-row"><span class="ex-name">${esc(ex.name)}</span></span>
+        <span class="ex-target">${slot.optional ? '<span class="tag opt-tag">optional</span>' : ''}${esc(target)} · rest ${restLabel(ex.rest)}</span>
         <span class="ex-muscles">${ex.primary.map((m) => MUSCLES[m]).join(', ')}</span>
       </button>
-      ${slot.optional
-        ? `<label class="switch" aria-label="Include ${esc(ex.name)}"><input type="checkbox" data-act="toggle-opt" data-slot="${slot.id}" ${isOff ? '' : 'checked'}><span></span></label>`
-        : `<button class="icon-btn" data-act="ex-map" data-ex="${ex.id}" aria-label="Muscles">${ICON.body}</button>`}
+      <div class="ex-actions">
+        ${canWatch(ex.anim || ex.id) ? `<button class="icon-btn tool watch" data-act="watch" data-ex="${ex.id}" aria-label="Watch demo" title="Watch demo">${ICON.play}</button>` : ''}
+        <button class="icon-btn tool" data-act="ex-map" data-ex="${ex.id}" aria-label="Show muscles" title="Show muscles">${ICON.body}</button>
+        ${slot.optional ? `<label class="switch" aria-label="Include ${esc(ex.name)}"><input type="checkbox" data-act="toggle-opt" data-slot="${slot.id}" ${isOff ? '' : 'checked'}><span></span></label>` : ''}
+      </div>
     </header>
-    ${isOff ? '' : `
-    <div class="ex-meta">${canWatch(ex.id) ? `<button class="watch-btn" data-act="watch" data-ex="${ex.id}" aria-label="Watch how to do ${esc(ex.name)}">${ICON.play} Watch</button>` : ''}${readyHtml}<span class="muted small">${esc(lastTxt)}</span>${ex.note ? `<span class="muted small">${esc(ex.note)}</span>` : ''}</div>
+    ${isOff ? '' : `${ex.equip ? equipPicker(ex) : ''}
+    <div class="ex-meta">${readyHtml}<span class="muted small">${esc(lastTxt)}</span>${ex.note ? `<span class="muted small">${esc(ex.note)}</span>` : ''}</div>
     <div class="sets ${ex.bodyweight ? 'bw' : ''}">
       <div class="set-head"><span>Set</span>${ex.bodyweight ? '' : '<span>Weight kg</span>'}<span>Reps${sideOf(ex) ? ` / ${sideOf(ex)}` : ''}</span><span></span></div>
       ${sets.map((s, i) => setRow(ex, s, i)).join('')}
@@ -210,8 +225,22 @@ export function logClick(e, el, rerender) {
     if (lost.length && !confirm(`${lost.map((x) => x.name).join(' & ')} has sets marked done. Switch anyway? Those sets won't be saved.`)) return;
     d.choices[b.dataset.slot] = b.dataset.opt; saveDraft(); return rerender();
   }
+  if (act === 'pick-equip') {
+    const ex = exFromCard(d, card);
+    const to = b.dataset.equip;
+    if (!ex || ex.equipId === to) return;
+    d.equip ||= {}; d.equip[ex.id] = to;
+    // Re-prefill the sets you haven't done yet from that equipment's own last logged weight.
+    const next = sessionExercises(d.workoutId, d, true).find((x) => x.id === ex.id);
+    const fill = prefillSets(next);
+    ensureSets(d, next).forEach((s, i) => { if (!s.done) s.weight = fill[i].weight; });
+    // Remember the pick for next time (synced with your other settings).
+    store.state.settings.equip = { ...store.state.settings.equip, [ex.id]: to };
+    store.commit({ kind: 'settings' }); saveDraft();
+    return rerender();
+  }
   if (act === 'session-map') return showSessionMap(d);
-  if (act === 'ex-map') { const ex = exFromCard(d, card); return showExerciseMap(ex, watchList(d, card.dataset.slot, ex)); }
+  if (act === 'ex-map') { const ex = exFromCard(d, card); return showExerciseMap(ex); }
   if (act === 'watch') return watchFromCard(d, card);
   if (act === 'progress') {
     const ex = exFromCard(d, card);
@@ -230,6 +259,7 @@ export function logClick(e, el, rerender) {
       row.querySelector(`input[data-f="${f}"]`).value = s[f];
     } else {
       s.done = !s.done;
+      if (ex.equipId) { if (s.done) s.equip = ex.equipId; else delete s.equip; }
       row.classList.toggle('done', s.done);
       b.setAttribute('aria-pressed', s.done);
       if (s.done) {
@@ -287,8 +317,8 @@ function saveWorkout(rerender) {
     savedAt: Date.now(),
     durationMin: Math.round((Date.now() - d.startedAt) / 60000),
     exercises: exs.map((ex) => ({
-      id: ex.id, name: ex.name,
-      sets: ensureSets(d, ex).filter((s) => s.done).map((s) => ({ reps: s.reps ?? 0, weight: ex.bodyweight ? null : s.weight ?? null })),
+      id: ex.id, name: ex.name, ...(ex.equipId ? { equip: ex.equipId } : {}),
+      sets: ensureSets(d, ex).filter((s) => s.done).map((s) => ({ reps: s.reps ?? 0, weight: ex.bodyweight ? null : s.weight ?? null, ...(ex.equipId ? { equip: s.equip || ex.equipId } : {}) })),
     })).filter((e) => e.sets.length),
   };
   store.state.draft = null;
@@ -309,15 +339,14 @@ export function muscleListHtml(ex) {
 }
 
 export function watchHtml(ex) {
-  return canWatch(ex.id) ? `<button class="btn block watch-open" data-act="watch" data-ex="${esc(ex.id)}">${ICON.play} Watch how it's done</button>` : '';
+  return canWatch(ex.anim || ex.id) ? `<button class="btn block watch-open" data-act="watch" data-ex="${esc(ex.id)}">${ICON.play} Watch how it's done</button>` : '';
 }
 
-export function showExerciseMap(ex, list = [ex]) {
-  const best = bestFor(ex.id);
-  openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${setsLabel(ex)}${best ? ` · best ${fmtKg(best.weight)} kg × ${best.reps}` : ''}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
-    ${bodyMap(exerciseLevels(ex))}${muscleListHtml(ex)}${watchHtml(ex)}`, (e) => {
-    if (e.type === 'click' && e.target.closest('[data-act="watch"]')) { closeSheet(); openWatch(list, ex.id); }
-  });
+/** Muscle sheet opened by the card's human icon. No Watch control here (v1.3.1): ▶ lives in the card header. */
+export function showExerciseMap(ex) {
+  const best = bestFor(ex.id, ex.equipId);
+  openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${setsLabel(ex)}${ex.equipName ? ` · ${esc(ex.equipName)}` : ''}${best ? ` · best ${fmtKg(best.weight)} kg × ${best.reps}` : ''}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
+    ${bodyMap(exerciseLevels(ex))}${muscleListHtml(ex)}`);
 }
 
 // ▶ Watch: a card inside the pull slot offers the slot's current choice(s) — row, pulldown, or both when "Both free".
@@ -329,7 +358,7 @@ function watchFromCard(d, card) {
 
 function watchList(d, slotId, ex) {
   const slot = getWorkout(d.workoutId).exercises.find((x) => x.id === slotId);
-  if (!slot?.options) return [{ id: ex.id, name: ex.name }];
+  if (!slot?.options) return [{ id: ex.id, name: ex.name, anim: ex.anim }];
   return resolveSlot(slot, slotChoice(slot, d.choices[slot.id]), d.workoutId).map((x) => ({ id: x.id, name: x.name }));
 }
 

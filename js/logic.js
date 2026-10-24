@@ -1,23 +1,28 @@
 // Derived data: history lookups, progression checks, schedule & program-week math.
-import { PROGRAM, getWorkout, resolveSlot, repRange, findExercise } from './program.js';
+import { PROGRAM, getWorkout, resolveSlot, repRange, findExercise, entryEquip, withEquip } from './program.js';
 import { store } from './store.js';
 import { todayISO, daysBetween, addDays, dowOf, mondayOf } from './utils.js';
 
-/** All logged entries for an exercise, newest first: [{date, sessionId, sets}] */
-export function historyFor(exId) {
+/** All logged entries for an exercise, newest first: [{date, sessionId, sets, equip}].
+ *  With `equipId`, only entries done with that equipment (exercises with equipment variants). */
+export function historyFor(exId, equipId) {
   const out = [];
+  const def = findExercise(exId);
   for (const s of store.sessionList()) {
     const e = s.exercises.find((x) => x.id === exId);
-    if (e && e.sets.length) out.push({ date: s.date, sessionId: s.id, sets: e.sets });
+    if (!e || !e.sets.length) continue;
+    const equip = entryEquip(def, e);
+    if (equipId && equip && equip !== equipId) continue;
+    out.push({ date: s.date, sessionId: s.id, sets: e.sets, equip });
   }
   return out;
 }
 
-export function lastFor(exId) { return historyFor(exId)[0] || null; }
+export function lastFor(exId, equipId) { return historyFor(exId, equipId)[0] || null; }
 
-export function bestFor(exId) {
+export function bestFor(exId, equipId) {
   let best = null;
-  for (const h of historyFor(exId)) {
+  for (const h of historyFor(exId, equipId)) {
     for (const st of h.sets) {
       if (st.weight != null && (best == null || st.weight > best.weight || (st.weight === best.weight && st.reps > best.reps))) {
         best = { weight: st.weight, reps: st.reps, date: h.date };
@@ -29,7 +34,7 @@ export function bestFor(exId) {
 
 /** Ready to progress when the last time every planned set hit the top of the rep range. */
 export function readyToProgress(ex) {
-  const last = lastFor(ex.id);
+  const last = lastFor(ex.id, ex.equipId);
   if (!last) return false;
   const top = repRange(ex)[1];
   return last.sets.length >= (ex.minSets ?? ex.sets) && last.sets.every((s) => (s.reps || 0) >= top);
@@ -45,7 +50,7 @@ export function nextWeight(ex, w) {
 
 /** Prefilled sets for an exercise: target reps (range → low end) + last logged weight or plan weight. */
 export function prefillSets(ex) {
-  const last = lastFor(ex.id);
+  const last = lastFor(ex.id, ex.equipId); // per equipment: dumbbell and kettlebell weights don't mix
   const reps = repRange(ex)[0];
   return Array.from({ length: ex.sets }, (_, i) => {
     let weight = ex.bodyweight ? null : ex.weight;
@@ -57,12 +62,19 @@ export function prefillSets(ex) {
   });
 }
 
+/** Equipment choice for an exercise: this workout's pick, else the user's last pick (synced setting), else default. */
+export function equipChoice(ex, draftEquip) {
+  if (!ex.equip) return null;
+  return draftEquip?.[ex.id] || store.state.settings.equip?.[ex.id] || ex.equip.default;
+}
+
 /** The exercise objects for a workout given the per-session choices. */
-export function sessionExercises(workoutId, { choices = {}, optionalOn = {} } = {}, includeOptional = false) {
+export function sessionExercises(workoutId, { choices = {}, optionalOn = {}, equip } = {}, includeOptional = false) {
   const w = getWorkout(workoutId);
   return w.exercises
     .filter((ex) => includeOptional || !ex.optional || optionalOn[ex.id])
-    .flatMap((ex) => (ex.options ? resolveSlot(ex, choices[ex.id], workoutId) : [{ ...ex, workout: workoutId }]));
+    .flatMap((ex) => (ex.options ? resolveSlot(ex, choices[ex.id], workoutId)
+      : [{ ...(ex.equip ? withEquip(ex, equipChoice(ex, equip)) : ex), workout: workoutId }]));
 }
 
 // ---------- program weeks ----------
