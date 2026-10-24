@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Personal workout log, weekly schedule and muscle map.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fitlog">
+  <title>Fitlog</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo" data-icon="log"></span><h1 id="title">Today</h1></div>
+    <div class="top-actions">
+      <span id="sync-dot" class="sync-dot" hidden title="Cloud sync status"></span>
+      <a id="settings-link" class="icon-btn" href="#/settings" aria-label="Settings" data-icon="gear"></a>
+    </div>
+  </header>
+
+  <main id="view" class="view" aria-live="polite"></main>
+
+  <div id="restbar" class="restbar" hidden role="timer" aria-live="polite">
+    <div class="rest-fill"></div>
+    <div class="rest-info"><span class="rest-label">Rest</span><span class="rest-range muted"></span></div>
+    <div class="rest-controls">
+      <button data-delta="-15" aria-label="15 seconds less">−15</button>
+      <span class="rest-time">0:00</span>
+      <button data-delta="15" aria-label="15 seconds more">+15</button>
+      <button data-act="rest-skip" class="skip">Skip</button>
+    </div>
+  </div>
+
+  <nav class="tabbar" aria-label="Main">
+    <a href="#/log" data-route="log"><span data-icon="log"></span>Today</a>
+    <a href="#/schedule" data-route="schedule"><span data-icon="schedule"></span>Schedule</a>
+    <a href="#/muscles" data-route="muscles"><span data-icon="muscles"></span>Muscles</a>
+    <a href="#/history" data-route="history"><span data-icon="history"></span>History</a>
+  </nav>
+
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-backdrop"></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true"><div class="sheet-grip"></div><div class="sheet-body"></div></div>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+  <noscript>Fitlog needs JavaScript.</noscript>
+</body>
+</html>
