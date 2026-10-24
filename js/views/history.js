@@ -8,7 +8,7 @@ import { bodyMap, exerciseLevels } from '../muscles.js';
 let mode = 'sessions';
 const open = new Set();
 
-const volume = (s) => s.exercises.reduce((v, e) => v + e.sets.reduce((a, x) => a + (x.weight || 0) * (x.reps || 0), 0), 0);
+const volumeCalc = (s) => s.exercises.reduce((v, e) => v + e.sets.reduce((a, x) => a + (x.weight || 0) * (x.reps || 0), 0), 0);
 /** Exercise name as logged, plus its equipment ("Hammer Curl · Dumbbells") for exercises with variants. */
 function entryLabel(e) {
   const def = findExercise(e.id);
@@ -17,6 +17,18 @@ function entryLabel(e) {
   return `${esc(def.name)} <span class="equip-tag">· ${esc(eq.name)}</span>`;
 }
 const equipName = (def, equip) => (def?.equip && equip ? equipOption(def, equip).name : '');
+/** Imported sessions keep the volume the other app reported (per-set numbers are unknown). */
+const volume = (s) => (s.imported?.volumeKg != null ? s.imported.volumeKg : volumeCalc(s));
+const fmtSet = (x) => (x.weight == null ? `${x.reps}` : `${fmtKg(x.weight)}×${x.reps}`);
+/** "4 sets · best 47 kg × 8" for imported entries (only the best set is known); otherwise every set. */
+function entrySets(e, imported) {
+  if (!imported) return e.sets.map(fmtSet).join(' · ');
+  const best = e.sets.find((x) => !x.unknown);
+  const n = e.sets.length;
+  const b = !best ? '' : best.weight == null ? `best ${best.reps} reps` : `best ${fmtKg(best.weight)} kg × ${best.reps}`;
+  return `${n} set${n === 1 ? '' : 's'}${b ? ` · ${b}` : ''}`;
+}
+const importedTag = '<span class="tag imp-tag">imported</span>';
 const setCount = (s) => s.exercises.reduce((n, e) => n + e.sets.length, 0);
 
 export function renderHistory(el) {
@@ -29,10 +41,11 @@ export function renderHistory(el) {
       return `<article class="card hist ${isOpen ? 'open' : ''}">
         <button class="hist-head" data-act="toggle" data-id="${s.id}">
           <span class="hist-date"><b>${fmtDate(s.date, { weekday: false }).split(' ')[1]}</b><small>${fmtDate(s.date, { weekday: false }).split(' ')[0]}</small></span>
-          <span class="hist-main"><b>${esc(w ? w.name : s.workoutId)}</b><span class="muted small">${fmtDate(s.date)} · ${setCount(s)} sets · ${Math.round(volume(s)).toLocaleString()} kg volume${s.durationMin ? ` · ${s.durationMin} min` : ''}</span></span>
+          <span class="hist-main"><b>${esc(s.imported && s.name ? s.name : w ? w.name : s.workoutId)}${s.imported ? importedTag : ''}</b><span class="muted small">${fmtDate(s.date)} · ${setCount(s)} sets · ${Math.round(volume(s)).toLocaleString()} kg volume${s.durationMin ? ` · ${s.durationMin} min` : ''}${s.imported?.prs ? ` · ${s.imported.prs} PR${s.imported.prs === 1 ? '' : 's'}` : ''}</span></span>
           <span class="chev">${ICON.chevR}</span>
         </button>
-        ${isOpen ? `<div class="hist-body">${s.exercises.map((e) => `<div class="hist-ex"><span>${entryLabel(e)}</span><span class="muted">${e.sets.map((x) => (x.weight == null ? `${x.reps}` : `${fmtKg(x.weight)}×${x.reps}`)).join(' · ')}</span></div>`).join('')}
+        ${isOpen ? `<div class="hist-body">${s.exercises.map((e) => `<div class="hist-ex"><span>${entryLabel(e)}</span><span class="muted">${entrySets(e, !!s.imported)}</span></div>`).join('')}
+          ${s.imported ? `<p class="muted small imp-note">Imported from your previous app: only the best set of each exercise was recorded there.</p>` : ''}
           <button class="btn danger small" data-act="del" data-id="${s.id}">${ICON.trash} Delete workout</button></div>` : ''}
       </article>`;
     }).join('') : '<p class="empty">No workouts yet. Log your first session on the Today tab.</p>';
@@ -43,7 +56,7 @@ export function renderHistory(el) {
       <div class="card list">${exs.filter((e) => e.workout === w.id).map((e) => {
         const h = historyFor(e.id); const best = bestFor(e.id);
         return `<button class="list-row" data-act="ex" data-ex="${e.id}">
-          <span><b>${esc(e.name)}</b><span class="muted small">${e.retired ? 'Removed from plan · ' : ''}${h.length ? `${h.length} session${h.length === 1 ? '' : 's'} · last ${fmtDate(h[0].date, { weekday: false })}` : 'Not logged yet'}</span></span>
+          <span><b>${esc(e.name)}</b><span class="muted small">${e.legacy ? 'Earlier app · ' : e.retired ? 'Removed from plan · ' : ''}${h.length ? `${h.length} session${h.length === 1 ? '' : 's'} · last ${fmtDate(h[0].date, { weekday: false })}` : 'Not logged yet'}</span></span>
           <span class="right">${!e.retired && readyToProgress(e) ? `<span class="badge ready sm">${ICON.up}</span>` : ''}${best && best.weight != null ? `<b>${fmtKg(best.weight)} kg</b>` : h.length ? `<b>${Math.max(...h.flatMap((x) => x.sets.map((s) => s.reps)))} reps</b>` : '<span class="muted">—</span>'}</span>
         </button>`;
       }).join('')}</div>`).join('');
@@ -71,7 +84,7 @@ function exerciseSheet(id) {
   openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${best && best.weight != null ? `Best ${fmtKg(best.weight)} kg × ${best.reps} (${fmtDate(best.date, { weekday: false })})` : h.length ? 'Bodyweight' : 'No sessions yet'}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
     ${readyToProgress(ex) ? `<div class="badge ready">${ICON.up} Ready to progress — ${esc(PROGRAM.progressionRule)}</div>` : ''}
     ${pts.length > 1 ? `<div class="spark-wrap"><span class="muted small">${ex.bodyweight ? 'Top reps' : 'Top weight (kg)'} per session</span>${sparkline(pts)}</div>` : ''}
-    <div class="card list flat">${h.length ? h.slice(0, 10).map((x) => `<div class="list-row static"><span>${fmtDate(x.date)}${equipName(ex, x.equip) ? ` <span class="equip-tag">· ${esc(equipName(ex, x.equip))}</span>` : ''}</span><span class="muted">${x.sets.map((s) => (s.weight == null ? s.reps : `${fmtKg(s.weight)}×${s.reps}`)).join(' · ')}</span></div>`).join('') : '<p class="empty">Log this exercise to see its history.</p>'}</div>
+    <div class="card list flat">${h.length ? h.slice(0, 10).map((x) => `<div class="list-row static"><span>${fmtDate(x.date)}${equipName(ex, x.equip) ? ` <span class="equip-tag">· ${esc(equipName(ex, x.equip))}</span>` : ''}</span><span class="muted">${x.imported ? `${entrySets({ sets: [...x.sets, ...Array(Math.max(0, x.setCount - x.sets.length)).fill({ unknown: true })] }, true)} ${importedTag}` : x.sets.map(fmtSet).join(' · ')}</span></div>`).join('') : '<p class="empty">Log this exercise to see its history.</p>'}</div>
     <details class="mini-map"><summary>${ICON.body} Muscles worked</summary>${bodyMap(exerciseLevels(ex))}</details>`);
 }
 

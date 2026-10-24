@@ -7,6 +7,7 @@ import { renderHistory, historyClick } from './views/history.js';
 import { renderSettings, settingsClick, settingsChange } from './views/settings.js';
 import { initSync, onSyncStatus, syncEnabled } from './sync.js';
 import { initWatch, closeWatch } from './watch.js';
+import { applyHistoryImport } from './importer.js';
 
 const ROUTES = {
   log: { title: 'Today', render: renderLog, click: logClick, change: logChange },
@@ -59,6 +60,9 @@ onSyncStatus((s) => {
 
 // Chrome: icons into the static shell
 document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = ICON[el.dataset.icon]; });
+
+// One-time import of the workouts logged in the previous app (js/history-import.js). Idempotent.
+try { applyHistoryImport(); } catch (e) { console.error('History import failed', e); }
 
 initSheet();
 initWatch();

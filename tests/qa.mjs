@@ -9,7 +9,10 @@ const results = [];
 const ok = (name, cond, extra = '') => { results.push(`${cond ? 'PASS' : 'FAIL'}  ${name}${extra ? ' — ' + extra : ''}`); if (!cond) process.exitCode = 1; };
 
 const browser = await chromium.launch({ executablePath: exe, args: ['--no-sandbox'] });
-const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, serviceWorkers: 'block', acceptDownloads: true });
+// The one-time history import (js/history-import.js) is switched off for the general checks so they start
+// from an empty history; the import itself is tested in its own contexts below.
+const newCtx = async (opts) => { const c = await browser.newContext(opts); await c.addInitScript(() => localStorage.setItem('fitlog.noImport', '1')); return c; };
+const ctx = await newCtx({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, serviceWorkers: 'block', acceptDownloads: true });
 const page = await ctx.newPage();
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
@@ -219,7 +222,7 @@ if (firebaseConfig.apiKey) {
 }
 
 // --- deload week via clock (Mon Nov 16 2026 = week 4) ---
-const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+const ctx2 = await newCtx({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
 const p2 = await ctx2.newPage();
 p2.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 await p2.clock.setFixedTime(new Date('2026-11-17T11:00:00Z')); // Tue 20:00 JST
@@ -229,7 +232,7 @@ ok('Tuesday defaults to KB + Legs scheduled', /Scheduled today 20:00–21:05/.te
 await ctx2.close();
 
 // --- migration: v1 data (old either/or slot, old draft) must still load ---
-const ctx4 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
+const ctx4 = await newCtx({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
 const p4 = await ctx4.newPage();
 p4.on('pageerror', (e) => errors.push('pageerror(migrate): ' + e.message));
 p4.on('console', (m) => { if (m.type() === 'error') errors.push('migrate: ' + m.text()); });
@@ -278,7 +281,7 @@ await ctx4.close();
 
 // --- Hammer Curl equipment picker (Dumbbells | Kettlebell), v1.3.1 ---
 {
-  const ctx5 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  const ctx5 = await newCtx({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   const p5 = await ctx5.newPage();
   p5.on('pageerror', (e) => errors.push('pageerror(hammer): ' + e.message));
   p5.on('console', (m) => { if (m.type() === 'error') errors.push('hammer: ' + m.text()); });
@@ -347,7 +350,7 @@ await ctx4.close();
   await ctx5.close();
 
   // Legacy: untagged "Hammer Curl (KB)" logs count as Kettlebell; Dumbbells start at 10. Old draft stays on KB.
-  const ctx6 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
+  const ctx6 = await newCtx({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
   const p6 = await ctx6.newPage();
   p6.on('pageerror', (e) => errors.push('pageerror(hammer-legacy): ' + e.message));
   await p6.addInitScript(() => {
@@ -373,7 +376,7 @@ await ctx4.close();
 
 // --- card header (v1.3.1): ▶ Watch + muscles icon buttons top-right, 360px wide ---
 {
-  const ctx7 = await browser.newContext({ viewport: { width: 360, height: 780 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  const ctx7 = await newCtx({ viewport: { width: 360, height: 780 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   const p7 = await ctx7.newPage();
   p7.on('pageerror', (e) => errors.push('pageerror(header): ' + e.message));
   const checkHeaders = async (label) => {
@@ -424,8 +427,120 @@ await ctx4.close();
   await ctx7.close();
 }
 
+// --- history import (v1.3.2): 8 sessions from the previous app, merged once, idempotent ---
+{
+  const IDS = ['import-2026-10-04-upper', 'import-2026-10-07-kb', 'import-2026-10-09-upper', 'import-2026-10-11-kb',
+    'import-2026-10-15-upper', 'import-2026-10-15-kb2', 'import-2026-10-20-kb', 'import-2026-10-22-upper'];
+  const USER = { id: 'user-first', workoutId: 'upper', date: '2026-10-24', startedAt: 1792819200000, savedAt: 1792822800000, updatedAt: 1792822800000, durationMin: 50,
+    exercises: [{ id: 'chest-press', name: 'Chest Press', sets: [{ reps: 8, weight: 45 }, { reps: 8, weight: 45 }, { reps: 7, weight: 45 }] },
+      { id: 'iso-row', name: 'Iso-Lateral Row', sets: [{ reps: 8, weight: 50 }, { reps: 8, weight: 50 }, { reps: 8, weight: 50 }, { reps: 8, weight: 50 }] }] };
+  const ctx8 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  const p8 = await ctx8.newPage();
+  p8.on('pageerror', (e) => errors.push('pageerror(import): ' + e.message));
+  p8.on('console', (m) => { if (m.type() === 'error') errors.push('import: ' + m.text()); });
+  p8.on('dialog', (d) => d.accept());
+  await p8.clock.setFixedTime(new Date('2026-10-24T05:40:00Z')); // Sat Oct 24 14:40 JST
+  await p8.addInitScript((user) => {
+    if (localStorage.getItem('fitlog.v1')) return;
+    const t = 1792819200000;
+    localStorage.setItem('fitlog.v1', JSON.stringify({ schema: 4, settings: { planMode: '3day', sound: true, vibrate: true, keepAwake: true, equip: {}, updatedAt: t },
+      schedule: { items: [], updatedAt: t }, sessions: { [user.id]: user }, deleted: {}, draft: null }));
+  }, USER);
+  const st = () => p8.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')));
+  await p8.goto(BASE + '#/history'); await p8.waitForSelector('.hist');
+  let s8 = await st();
+  const imp = () => Object.keys(s8.sessions).filter((id) => id.startsWith('import-')).sort();
+  ok('Import: all 8 sessions present with stable ids', JSON.stringify(imp()) === JSON.stringify([...IDS].sort()), imp().join());
+  ok('Import: sessions flagged imported, fixed updatedAt', IDS.every((id) => s8.sessions[id]?.imported?.batch === 'other-app-2026-10' && s8.sessions[id].updatedAt === 1792790400000));
+  ok('Import: user-logged session untouched', JSON.stringify(s8.sessions['user-first']) === JSON.stringify(USER));
+  const o4 = s8.sessions['import-2026-10-04-upper'];
+  const lp = o4.exercises.find((e) => e.id === 'lat-pulldown');
+  ok('Import: best set is the one real set, others count-only', lp.sets.length === 4 && lp.sets[0].weight === 47 && lp.sets[0].reps === 8 && lp.sets.slice(1).every((x) => x.unknown && x.weight == null && x.reps == null));
+  ok('Import: metadata kept (duration, volume, PRs)', o4.durationMin === 76 && o4.imported.volumeKg === 5031 && o4.imported.prs === 3);
+  const ex = (id, eid) => s8.sessions[id].exercises.find((e) => e.id === eid);
+  ok('Import: combined KB weights stored per bell (26→13, 31→15.5; Oct 7 Around stays 13)',
+    ex('import-2026-10-07-kb', 'kb-oblique').sets[0].weight === 13 && ex('import-2026-10-11-kb', 'kb-around').sets[0].weight === 13 && ex('import-2026-10-20-kb', 'kb-oblique').sets[0].weight === 15.5
+    && ex('import-2026-10-20-kb', 'kb-around').sets[0].weight === 15.5 && ex('import-2026-10-07-kb', 'kb-around').sets[0].weight === 13 && ex('import-2026-10-11-kb', 'kb-oblique').imported.loggedWeight === 26);
+  ok('Import: 11 kg hammer curl tagged Kettlebell; gym 20 kg kept as logged',
+    ex('import-2026-10-20-kb', 'kb-hammer-curl').equip === 'kb' && ex('import-2026-10-20-kb', 'kb-hammer-curl').sets[0].weight === 11 && ex('import-2026-10-15-upper', 'hammer-curl').sets[0].weight === 20
+    && ex('import-2026-10-15-upper', 'legacy-tricep-kickback').sets[0].weight === 20 && ex('import-2026-10-04-upper', 'legacy-bicep-curl').sets[0].weight === 20);
+  ok('Import: triceps → pushdown at the gym, KB triceps at home', !!ex('import-2026-10-22-upper', 'triceps-ext') && !!ex('import-2026-10-20-kb', 'kb-triceps-ext'));
+  // idempotent across reloads (also with the per-device marker cleared)
+  await p8.reload(); await p8.waitForSelector('.hist'); await p8.reload(); await p8.waitForSelector('.hist');
+  await p8.evaluate(() => { const s = JSON.parse(localStorage.getItem('fitlog.v1')); delete s.imports; localStorage.setItem('fitlog.v1', JSON.stringify(s)); });
+  await p8.reload(); await p8.waitForSelector('.hist');
+  s8 = await st();
+  const keys = Object.keys(s8.sessions);
+  const sig = Object.values(s8.sessions).map((s) => `${s.date}|${s.name || ''}|${s.workoutId}|${s.exercises.length}`);
+  ok('Import: idempotent on reload — 9 sessions, no duplicates', keys.length === 9 && imp().length === 8 && new Set(sig).size === sig.length, `${keys.length} sessions`);
+  ok('Import: user session still untouched after reloads', JSON.stringify(s8.sessions['user-first']) === JSON.stringify(USER));
+  // History renders
+  const cards = p8.locator('.hist');
+  ok('History: 9 workouts, 8 with the imported tag', (await cards.count()) === 9 && (await p8.locator('.hist-head .imp-tag').count()) === 8);
+  ok('History: newest real log listed first', !(await cards.first().locator('.imp-tag').count()) && /Sat, Oct 24/.test(await cards.first().textContent()));
+  const c4 = p8.locator('.hist', { has: p8.locator('[data-id="import-2026-10-04-upper"]') });
+  ok('History: imported card shows original name + volume/duration/PR metadata', /Upper Body/.test(await c4.textContent()) && /19 sets · 5,031 kg volume · 76 min · 3 PRs/.test(await c4.textContent()), (await c4.textContent()).replace(/\s+/g, ' '));
+  await p8.tap('[data-act="toggle"][data-id="import-2026-10-04-upper"]'); await p8.waitForTimeout(150);
+  const b4 = (await p8.locator('.hist.open .hist-body').textContent()).replace(/\s+/g, ' ');
+  ok('History: "4 sets · best 47 kg × 8" per exercise', /Lat Pulldown\s*4 sets · best 47 kg × 8/.test(b4) && /Bicep Curl \(dumbbell\)\s*1 set · best 20 kg × 6/.test(b4), b4.slice(0, 160));
+  await p8.tap('[data-act="toggle"][data-id="import-2026-10-11-kb"]'); await p8.waitForTimeout(150);
+  ok('History: bodyweight best shown as reps', /Push Up\s*3 sets · best 10 reps/.test((await p8.locator('.hist', { has: p8.locator('[data-id="import-2026-10-11-kb"]') }).textContent()).replace(/\s+/g, ' ')));
+  await p8.tap('[data-act="toggle"][data-id="import-2026-10-11-kb"]');
+  await p8.tap('[data-act="toggle"][data-id="import-2026-10-04-upper"]');
+  await p8.tap('[data-act="toggle"][data-id="import-2026-10-22-upper"]');
+  await p8.evaluate(() => window.scrollTo(0, 0)); await p8.waitForTimeout(150);
+  await p8.screenshot({ path: SHOTS + '12-history-imported.png' });
+  await p8.tap('[data-act="toggle"][data-id="import-2026-10-22-upper"]');
+  // Exercises tab: legacy entries render by name, mapped ones connect
+  await p8.tap('[data-act="mode"][data-mode="exercises"]'); await p8.waitForTimeout(150);
+  const exTxt = (await p8.textContent('#view')).replace(/\s+/g, ' ');
+  ok('Exercises tab: legacy exercises listed by name', ['KB Russian Twist', 'KB Clean & Thruster', 'Overhead Press', 'Tricep Kickback', 'KB Bent Over Row', 'KB Lunge', 'Bicep Curl (dumbbell)'].every((n) => exTxt.includes(n)) && /Earlier app/.test(exTxt));
+  ok('Exercises tab: Lat Pulldown connects to imported history', /Lat Pulldown\s*2 sessions · last Oct 9/.test(exTxt));
+  await p8.tap('[data-act="ex"][data-ex="shoulder-press"]'); await p8.waitForSelector('.sheet');
+  const sp = (await p8.textContent('.sheet')).replace(/\s+/g, ' ');
+  ok('Exercise sheet: imported rows show sets · best + tag', /Best 70 kg × 6/.test(sp) && /3 sets · best 70 kg × 6\s*imported/.test(sp), sp.slice(0, 200));
+  await p8.tap('[data-act="sheet-close"]'); await p8.tap('[data-act="mode"][data-mode="sessions"]');
+  // Prefill: newest real log wins; imports fill exercises not logged since
+  await p8.goto(BASE + '#/log'); await p8.waitForSelector('.ex');
+  await p8.tap('[data-act="pick-workout"][data-w="upper"]').catch(() => {}); await p8.waitForSelector('.ex[data-ex="chest-press"]');
+  const cpw = await p8.locator('.ex[data-ex="chest-press"] .set-row[data-i="0"] input[data-f="weight"]').inputValue();
+  ok('Prefill: chest press from newest real log (45), not imported 42.5', cpw === '45', cpw);
+  const spw = await p8.locator('.ex[data-ex="shoulder-press"] .set-row[data-i="2"] input[data-f="weight"]').inputValue();
+  ok('Prefill: shoulder press from latest imported best (70) on every set', spw === '70', spw);
+  ok('Prefill: card says the last session was imported', /Last Oct 22 \(imported\): 3 sets, best 70×6/.test(await p8.locator('.ex[data-ex="shoulder-press"]').textContent()));
+  await p8.tap('[data-act="pick-workout"][data-w="kb"]').catch(() => {}); await p8.waitForSelector('.ex[data-ex="kb-swing"]');
+  const obw = await p8.locator('.ex[data-ex="kb-oblique"] .set-row[data-i="0"] input[data-f="weight"]').inputValue();
+  ok('Prefill: KB oblique per bell from Oct 20 (15.5)', obw === '15.5', obw);
+  ok('Imported sets never trigger "ready to progress"', (await p8.locator('.ex[data-ex="kb-swing"] .badge.ready').count()) === 0);
+  await p8.evaluate(() => { const s = JSON.parse(localStorage.getItem('fitlog.v1')); s.draft = null; localStorage.setItem('fitlog.v1', JSON.stringify(s)); });
+  // a deleted import is not brought back (tombstone), even if the marker is cleared
+  await p8.goto(BASE + '#/history'); await p8.waitForSelector('.hist');
+  await p8.tap('[data-act="toggle"][data-id="import-2026-10-07-kb"]'); await p8.waitForTimeout(100);
+  await p8.tap('.hist.open [data-act="del"]'); await p8.waitForTimeout(200);
+  await p8.evaluate(() => { const s = JSON.parse(localStorage.getItem('fitlog.v1')); delete s.imports; localStorage.setItem('fitlog.v1', JSON.stringify(s)); });
+  await p8.reload(); await p8.waitForSelector('.hist');
+  s8 = await st();
+  ok('Import: a deleted imported session is not re-added', !s8.sessions['import-2026-10-07-kb'] && !!s8.deleted['import-2026-10-07-kb'] && imp().length === 7);
+  await ctx8.close();
+
+  // same workout already logged by the user on the same day → that import is skipped
+  const ctx9 = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+  const p9 = await ctx9.newPage();
+  p9.on('pageerror', (e) => errors.push('pageerror(import2): ' + e.message));
+  await p9.addInitScript(() => {
+    if (localStorage.getItem('fitlog.v1')) return;
+    const t = 1792700000000;
+    localStorage.setItem('fitlog.v1', JSON.stringify({ schema: 4, settings: { planMode: '3day', updatedAt: t }, schedule: { items: [], updatedAt: t },
+      sessions: { mine: { id: 'mine', workoutId: 'upper', date: '2026-10-22', savedAt: t, updatedAt: t, exercises: [{ id: 'chest-press', name: 'Chest Press', sets: [{ reps: 6, weight: 42.5 }] }] } }, deleted: {}, draft: null }));
+  });
+  await p9.goto(BASE + '#/history'); await p9.waitForSelector('.hist');
+  const s9 = await p9.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')));
+  ok('Import: skips a day/workout you already logged yourself', !s9.sessions['import-2026-10-22-upper'] && Object.keys(s9.sessions).length === 8 && s9.sessions.mine.updatedAt === 1792700000000);
+  await ctx9.close();
+}
+
 // --- service worker offline ---
-const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const ctx3 = await newCtx({ viewport: { width: 390, height: 844 } });
 const p3 = await ctx3.newPage();
 p3.on('pageerror', (e) => errors.push('pageerror(sw): ' + e.message));
 await p3.goto(BASE + '#/log');

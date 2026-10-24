@@ -13,7 +13,10 @@ export function historyFor(exId, equipId) {
     if (!e || !e.sets.length) continue;
     const equip = entryEquip(def, e);
     if (equipId && equip && equip !== equipId) continue;
-    out.push({ date: s.date, sessionId: s.id, sets: e.sets, equip });
+    // Imported entries: only the best set has numbers; count-only sets are left out here.
+    const sets = s.imported ? e.sets.filter((x) => !x.unknown) : e.sets;
+    if (!sets.length) continue;
+    out.push({ date: s.date, sessionId: s.id, sets, equip, ...(s.imported ? { imported: true, setCount: e.sets.length } : {}) });
   }
   return out;
 }
@@ -35,7 +38,7 @@ export function bestFor(exId, equipId) {
 /** Ready to progress when the last time every planned set hit the top of the rep range. */
 export function readyToProgress(ex) {
   const last = lastFor(ex.id, ex.equipId);
-  if (!last) return false;
+  if (!last || last.imported) return false; // imported: per-set reps unknown
   const top = repRange(ex)[1];
   return last.sets.length >= (ex.minSets ?? ex.sets) && last.sets.every((s) => (s.reps || 0) >= top);
 }

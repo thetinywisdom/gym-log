@@ -351,3 +351,7 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid 
 .icon-btn.tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ex-actions .switch { margin-left: 4px; }
 .tag.opt-tag { margin: 0 6px 0 0; vertical-align: 1px; }
+
+/* imported history (js/history-import.js) */
+.tag.imp-tag { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--muted); }
+.imp-note { margin: 4px 0 10px; }

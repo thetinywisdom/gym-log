@@ -140,7 +140,8 @@ export const store = {
     return Object.keys(data.sessions).length;
   },
   resetAll() {
-    this.state = fresh();
+    const imports = this.state.imports; // don't bring the imported history back after a reset
+    this.state = { ...fresh(), ...(imports ? { imports } : {}) };
     this.commit({ kind: 'all' });
   },
 };

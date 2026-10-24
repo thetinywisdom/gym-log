@@ -3,6 +3,7 @@
 //               users/{uid}/sessions/{id}     a session, or { deleted: true, updatedAt } tombstone
 import { firebaseConfig } from '../firebase-config.js';
 import { store } from './store.js';
+import { reconcileImports } from './importer.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/13.1.0';
 export const syncEnabled = !!(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId);
@@ -57,7 +58,7 @@ const clean = (o) => JSON.parse(JSON.stringify(o)); // drop undefined
 
 function startSync(uid) {
   const { f } = fb;
-  let firstSessions = true, firstMeta = true;
+  let firstSessions = true, firstMeta = true, firstReconcile = true;
 
   unsubs.push(f.onSnapshot(f.collection(fb.db, 'users', uid, 'sessions'), (snap) => {
     const st = store.state; let changed = false;
@@ -88,6 +89,7 @@ function startSync(uid) {
       writeAll(ops);
     }
     if (changed) store.commit({ kind: 'all', remote: true });
+    if (firstReconcile) { firstReconcile = false; reconcileImports(); }
     setStatus({ state: 'synced', error: null });
   }, onErr));
 

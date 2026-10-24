@@ -9,6 +9,7 @@ const ok = (name, cond, extra = '') => { results.push(`${cond ? 'PASS' : 'FAIL'}
 const browser = await chromium.launch({ executablePath: exe, args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
 await ctx.addInitScript(() => {
+  localStorage.setItem('fitlog.noImport', '1'); // start from an empty history (import is tested in qa.mjs)
   window.__gl = 0;
   const orig = HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.getContext = function (t, ...a) { const c = orig.call(this, t, ...a); if (/webgl/.test(t) && c && !this.__counted) { this.__counted = 1; window.__gl++; } return c; };

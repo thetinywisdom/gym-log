@@ -1,9 +1,9 @@
 // Simple offline service worker: precache the app shell, then stale-while-revalidate same-origin GETs.
 // Bump VERSION whenever you deploy changes so phones pick up the new files.
-const VERSION = 'fitlog-v1.3.1';
+const VERSION = 'fitlog-v1.3.2';
 const SHELL = [
   './', './index.html', './styles.css', './manifest.webmanifest', './firebase-config.js',
-  './js/app.js', './js/program.js', './js/store.js', './js/utils.js', './js/logic.js', './js/ui.js', './js/muscles.js', './js/sync.js',
+  './js/app.js', './js/program.js', './js/store.js', './js/utils.js', './js/logic.js', './js/ui.js', './js/muscles.js', './js/sync.js', './js/importer.js', './js/history-import.js',
   './js/views/log.js', './js/views/schedule.js', './js/views/muscles.js', './js/views/history.js', './js/views/settings.js', './js/watch.js',
   // ▶ Watch: 3D exercise player (Three.js r170, rig, exercise clips), precached so it works offline at the gym
   './anim/src/clip.js', './anim/src/equipment.js', './anim/src/mannequin.js', './anim/src/player.js',

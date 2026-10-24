@@ -26,6 +26,8 @@
 //    biceps, brachialis, triceps, forearms, abs, obliques, glutes, quads,
 //    hamstrings, adductors, calves
 
+import { LEGACY_EXERCISES } from './history-import.js';
+
 const SHOULDERS = ['frontDelts', 'sideDelts', 'rearDelts'];
 const REST_KB = [60, 90];
 const REST_HEAVY = [90, 120];
@@ -171,6 +173,8 @@ export function allExercises() {
     }
   }
   for (const r of PROGRAM.retired || []) out.push({ ...r, retired: true });
+  // Imported from the app used before Fitlog; history only (see js/history-import.js).
+  for (const r of LEGACY_EXERCISES) out.push({ ...r, retired: true, legacy: true });
   return out;
 }
 
