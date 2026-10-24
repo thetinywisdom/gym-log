@@ -1,5 +1,5 @@
 // Derived data: history lookups, progression checks, schedule & program-week math.
-import { PROGRAM, getWorkout, resolveOption, repRange, findExercise } from './program.js';
+import { PROGRAM, getWorkout, resolveSlot, repRange, findExercise } from './program.js';
 import { store } from './store.js';
 import { todayISO, daysBetween, addDays, dowOf, mondayOf } from './utils.js';
 
@@ -32,7 +32,7 @@ export function readyToProgress(ex) {
   const last = lastFor(ex.id);
   if (!last) return false;
   const top = repRange(ex)[1];
-  return last.sets.length >= ex.sets && last.sets.every((s) => (s.reps || 0) >= top);
+  return last.sets.length >= (ex.minSets ?? ex.sets) && last.sets.every((s) => (s.reps || 0) >= top);
 }
 
 export function nextWeight(ex, w) {
@@ -62,7 +62,7 @@ export function sessionExercises(workoutId, { choices = {}, optionalOn = {} } = 
   const w = getWorkout(workoutId);
   return w.exercises
     .filter((ex) => includeOptional || !ex.optional || optionalOn[ex.id])
-    .map((ex) => (ex.options ? resolveOption(ex, choices[ex.id], workoutId) : { ...ex, workout: workoutId }));
+    .flatMap((ex) => (ex.options ? resolveSlot(ex, choices[ex.id], workoutId) : [{ ...ex, workout: workoutId }]));
 }
 
 // ---------- program weeks ----------

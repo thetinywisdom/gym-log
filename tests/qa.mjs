@@ -114,7 +114,7 @@ await page.tap('#sheet [data-act="f-save"]'); await page.waitForTimeout(300);
 await page.reload(); await page.waitForSelector('.days');
 const wed = await page.locator('.day', { hasText: 'Wed' }).textContent();
 ok('Schedule edit persisted after reload (Wed 19:30)', /19:30–20:35/.test(wed), wed.replace(/\s+/g, ' ').trim());
-ok('Added Sat session persisted', /10:00–10:50/.test(await page.locator('.day', { hasText: 'Sat' }).textContent()));
+ok('Added Sat session persisted', /10:00–11:00/.test(await page.locator('.day', { hasText: 'Sat' }).textContent()));
 ok('Sat 24 shows logged workout', /logged/.test(await page.locator('.day', { hasText: 'Sat' }).textContent()));
 await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: SHOTS + '02-schedule.png' });
@@ -140,26 +140,65 @@ await page.tap('[data-act="m-mode"][data-mode="exercise"]');
 await page.locator('.pill', { hasText: 'Lat Pulldown' }).tap();
 ok('Exercise picker: Lat Pulldown primary = lats', (await page.$$eval('#view .m.primary', (e) => [...new Set(e.map((x) => x.dataset.m))].join())) === 'lats');
 
-// --- upper session: fly/pulldown choice + 1.25 kg step ---
+// --- upper session: pull slot (Row / Pulldown / Both free), blank weights, 1.25 kg step ---
 await page.goto(BASE + '#/log'); await page.waitForSelector('.ex');
 await page.tap('[data-act="pick-workout"][data-w="upper"]');
+const order = await page.$$eval('.ex', (els) => els.map((e) => e.dataset.ex));
+ok('Upper order: press, pull(row), shoulder, fly, reverse fly, triceps, curl', order.join() === 'chest-press,iso-row,shoulder-press,chest-fly,reverse-fly,triceps-ext,hammer-curl', order.join());
+ok('No old Fly/Pulldown either-or', (await page.locator('[data-opt="chest-fly"]').count()) === 0 && (await page.locator('.slot[data-slot="pull-slot"]').count()) === 1);
+const pickLabels = await page.$$eval('.slot-pick button', (b) => b.map((x) => x.textContent.trim()));
+ok('Pull slot picker: Row / Pulldown / Both free', pickLabels.join('|') === 'Iso-Lateral Row|Lat Pulldown|Both free', pickLabels.join('|'));
+ok('Iso-Lateral Row alone = 4 sets @45', (await card('iso-row').locator('.set-row').count()) === 4 && (await card('iso-row').locator('.set-row[data-i="0"] input[data-f="weight"]').inputValue()) === '45');
+ok('Chest Press rest shows 2 min', /rest 2 min/.test(await card('chest-press').locator('.ex-target').textContent()));
 await page.tap('[data-act="pick-option"][data-opt="lat-pulldown"]');
-ok('Fly/Pulldown choice works', (await page.locator('.ex[data-ex="lat-pulldown"]').count()) === 1);
+ok('Lat Pulldown alone = 4 sets, iso row hidden', (await card('lat-pulldown').locator('.set-row').count()) === 4 && (await card('iso-row').count()) === 0);
+const lpBlank = await card('lat-pulldown').locator('input[data-f="weight"]').evaluateAll((els) => els.every((e) => e.value === ''));
+ok('Lat Pulldown weight starts blank', lpBlank);
+ok('Chest Fly / Reverse Fly weight starts blank', (await card('chest-fly').locator('.set-row[data-i="0"] input[data-f="weight"]').inputValue()) === '' && (await card('reverse-fly').locator('.set-row[data-i="0"] input[data-f="weight"]').inputValue()) === '');
+await card('chest-fly').locator('.set-row[data-i="0"] [data-act="step"][data-f="weight"][data-d="2.5"]').tap();
+ok('Stepper from blank → 2.5', (await card('chest-fly').locator('.set-row[data-i="0"] input[data-f="weight"]').inputValue()) === '2.5');
+const lpIn = card('lat-pulldown').locator('.set-row[data-i="0"] input[data-f="weight"]');
+await lpIn.fill('52'); await lpIn.blur();
+await page.tap('[data-act="pick-option"][data-opt="both"]');
+ok('Both free = Row 3 sets + Pulldown 3 sets', (await card('iso-row').locator('.set-row').count()) === 3 && (await card('lat-pulldown').locator('.set-row').count()) === 3);
+ok('Typed pulldown weight kept after switching', (await card('lat-pulldown').locator('.set-row[data-i="0"] input[data-f="weight"]').inputValue()) === '52');
+await card('lat-pulldown').locator('.set-row[data-i="0"] [data-act="done"]').tap();
+ok('Pull slot rest = 2 min', (await page.textContent('#restbar .rest-range')) === '2 min');
+await card('chest-press').locator('.set-row[data-i="0"] [data-act="done"]').tap();
+await page.locator('.slot').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 70));
+await page.waitForTimeout(350);
+await page.tap('#restbar [data-act="rest-skip"]'); await page.waitForTimeout(250);
+await page.screenshot({ path: SHOTS + '07-upper-pull-slot.png' });
 await card('triceps-ext').locator('.set-row[data-i="0"] [data-act="step"][data-f="weight"][data-d="1.25"]').tap();
 ok('Triceps extension step is 1.25 kg', (await card('triceps-ext').locator('.set-row[data-i="0"] input[data-f="weight"]').inputValue()) === '22.5');
+// fill remaining blank weights, finish everything, save
+for (const id of ['chest-fly', 'reverse-fly']) for (let i = 0; i < 3; i++) { const inp = card(id).locator(`.set-row[data-i="${i}"] input[data-f="weight"]`); await inp.fill(id === 'chest-fly' ? '30' : '15'); await inp.blur(); }
+{ const r = page.locator('.set-row:not(.done) [data-act="done"]'); while (await r.count()) await r.first().tap(); }
+ok('Upper total sets with Both free = 3+3+3+3+3+3+3+3 = 24', (await page.textContent('.sets-total')) === '24');
+await page.tap('[data-act="save"]'); await page.waitForSelector('#toast.show');
+const upSaved = await page.evaluate(() => { const s = Object.values(JSON.parse(localStorage.getItem('fitlog.v1')).sessions).find((x) => x.workoutId === 'upper'); return Object.fromEntries(s.exercises.map((e) => [e.id, e.sets.length])); });
+ok('Saved upper: iso-row 3 + lat-pulldown 3 logged separately', upSaved['iso-row'] === 3 && upSaved['lat-pulldown'] === 3, JSON.stringify(upSaved));
+await page.waitForTimeout(300);
+await page.tap('[data-act="pick-option"][data-opt="lat-pulldown"]');
+ok('Next time Lat Pulldown prefills last weight (4 sets)', (await card('lat-pulldown').locator('.set-row').count()) === 4 && (await card('lat-pulldown').locator('.set-row[data-i="3"] input[data-f="weight"]').inputValue()) === '52');
+ok('Next time Chest Fly prefills last weight', (await card('chest-fly').locator('.set-row[data-i="0"] input[data-f="weight"]').inputValue()) === '30');
 await page.tap('[data-act="discard"]');
+await page.goto(BASE + '#/history'); await page.tap('[data-act="mode"][data-mode="exercises"]');
+ok('History per exercise: Lat Pulldown & Iso-Lateral Row listed separately', /1 session/.test(await page.locator('.list-row', { hasText: 'Lat Pulldown' }).textContent()) && /1 session/.test(await page.locator('.list-row', { hasText: 'Iso-Lateral Row' }).textContent()));
+await page.goto(BASE + '#/schedule'); await page.waitForSelector('.days');
+ok('Upper Body schedule default 20:00–21:00', /20:00–21:00/.test(await page.locator('.day', { hasText: 'Thu' }).textContent()));
 
 // --- export / import ---
 await page.goto(BASE + '#/settings'); await page.waitForSelector('[data-act="export"]');
 const [dl] = await Promise.all([page.waitForEvent('download'), page.tap('[data-act="export"]')]);
 const file = '/tmp/fitlog-export.json'; await dl.saveAs(file);
 const exp = JSON.parse(fs.readFileSync(file, 'utf8'));
-ok('Export contains session + schedule', Object.keys(exp.sessions).length === 1 && exp.schedule.items.length === 4, dl.suggestedFilename());
+ok('Export contains session + schedule', Object.keys(exp.sessions).length === 2 && exp.schedule.items.length === 4, dl.suggestedFilename());
 await page.tap('[data-act="reset"]'); await page.waitForTimeout(300);
 ok('Reset clears data', (await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('fitlog.v1')).sessions).length)) === 0);
 await page.setInputFiles('input[data-act="import"]', file); await page.waitForTimeout(500);
 const after = await page.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')));
-ok('Import restores session + schedule', Object.keys(after.sessions).length === 1 && after.schedule.items.length === 4);
+ok('Import restores sessions + schedule', Object.keys(after.sessions).length === 2 && after.schedule.items.length === 4);
 const { firebaseConfig } = await page.evaluate(() => import('./firebase-config.js').then((m) => ({ firebaseConfig: m.firebaseConfig })));
 if (firebaseConfig.apiKey) {
   await page.waitForSelector('[data-act="signin"]', { timeout: 10000 }).catch(() => {});
@@ -179,6 +218,45 @@ await p2.goto(BASE + '#/log'); await p2.waitForSelector('.ex');
 ok('Week 4 today shows deload chip + hint', /Week 4 of 12/.test(await p2.textContent('.eyebrow')) && (await p2.locator('.deload-note').count()) === 1);
 ok('Tuesday defaults to KB + Legs scheduled', /Scheduled today 20:00–21:05/.test(await p2.textContent('.hero')));
 await ctx2.close();
+
+// --- migration: v1 data (old either/or slot, old draft) must still load ---
+const ctx4 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
+const p4 = await ctx4.newPage();
+p4.on('pageerror', (e) => errors.push('pageerror(migrate): ' + e.message));
+p4.on('console', (m) => { if (m.type() === 'error') errors.push('migrate: ' + m.text()); });
+await p4.addInitScript(() => {
+  if (localStorage.getItem('fitlog.v1')) return;
+  const t = Date.now();
+  const sess = (id, date, ex) => ({ id, workoutId: 'upper', date, startedAt: t, savedAt: t, updatedAt: t, exercises: ex });
+  localStorage.setItem('fitlog.v1', JSON.stringify({
+    schema: 1,
+    settings: { planMode: '3day', sound: true, vibrate: true, keepAwake: true, updatedAt: t },
+    schedule: { items: [{ id: 'a', dow: 4, time: '20:00', workout: 'upper' }], updatedAt: t },
+    sessions: {
+      s1: sess('s1', '2026-10-15', [{ id: 'chest-press', name: 'Chest Press', sets: [{ reps: 8, weight: 42.5 }, { reps: 8, weight: 42.5 }, { reps: 8, weight: 42.5 }] },
+        { id: 'iso-row', name: 'Iso-Lateral Row', sets: [{ reps: 8, weight: 45 }, { reps: 8, weight: 45 }, { reps: 8, weight: 45 }] },
+        { id: 'lat-pulldown', name: 'Lat Pulldown', sets: [{ reps: 12, weight: 50 }, { reps: 11, weight: 50 }, { reps: 10, weight: 50 }] }]),
+      s2: sess('s2', '2026-10-08', [{ id: 'chest-fly', name: 'Chest Fly', sets: [{ reps: 12, weight: 25 }] }, { id: 'old-gone', name: 'Removed Exercise', sets: [{ reps: 5, weight: 10 }] }]),
+    },
+    deleted: {},
+    draft: { id: 'd1', workoutId: 'upper', date: '2026-10-24', startedAt: t, choices: { 'fly-or-pulldown': 'lat-pulldown' }, optionalOn: {},
+      sets: { 'chest-press': [{ reps: 6, weight: 42.5, done: true }], 'lat-pulldown': [{ reps: 10, weight: 50, done: true }, { reps: 10, weight: 50, done: false }, { reps: 10, weight: 50, done: false }] } },
+  }));
+});
+await p4.goto(BASE + '#/log'); await p4.waitForSelector('.ex');
+ok('Migrated old draft: pull slot = Both free, done pulldown set kept', (await p4.locator('.slot-pick button.on').textContent()).trim() === 'Both free' && (await p4.locator('.ex[data-ex="lat-pulldown"] .set-row.done').count()) === 1);
+ok('Migrated: old 3-set iso-row history → 3 sets in Both mode', (await p4.locator('.ex[data-ex="iso-row"] .set-row').count()) === 3);
+ok('Old chest press done set kept', (await p4.locator('.ex[data-ex="chest-press"] .set-row.done').count()) === 1);
+ok('Schema bumped to 2', (await p4.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')).schema)) === 2);
+await p4.goto(BASE + '#/history'); await p4.waitForSelector('.hist');
+ok('Old sessions still listed (incl. removed exercise)', (await p4.locator('.hist').count()) === 2);
+await p4.locator('.hist-head').nth(1).tap();
+ok('Removed exercise still shown by name', /Removed Exercise/.test(await p4.textContent('.hist-body')));
+await p4.tap('[data-act="mode"][data-mode="exercises"]');
+ok('Old Chest Fly + Lat Pulldown history kept', /1 session/.test(await p4.locator('.list-row', { hasText: 'Chest Fly' }).textContent()) && /1 session/.test(await p4.locator('.list-row', { hasText: 'Lat Pulldown' }).textContent()));
+await p4.goto(BASE + '#/muscles'); await p4.tap('[data-act="m-mode"][data-mode="week"]');
+await p4.goto(BASE + '#/schedule'); await p4.waitForSelector('.days');
+await ctx4.close();
 
 // --- service worker offline ---
 const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 } });

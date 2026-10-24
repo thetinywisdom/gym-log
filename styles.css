@@ -307,3 +307,12 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid 
   .body-svg { max-height: 520px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---- option slot (e.g. Pull: Row / Pulldown / Both) ---- */
+.slot { padding: 14px 16px 4px; border-style: dashed; border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: color-mix(in srgb, var(--accent) 5%, var(--card)); margin-bottom: 8px; }
+.slot-head { display: flex; flex-direction: column; gap: 2px; }
+.slot-head b { font-size: 1.02rem; }
+.slot-pick { margin: 10px 0 10px; }
+.slot-pick button.on { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.ex.in-slot { border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.slot-pick button { white-space: nowrap; font-size: 0.82rem; padding: 0 6px; }

@@ -1,3 +1,4 @@
+import { restLabel } from './program.js';
 // Small UI helpers: icons, toast, bottom sheet, confirm, rest timer.
 import { fmtSecs } from './utils.js';
 import { store } from './store.js';
@@ -103,7 +104,7 @@ export function startRest([min, max], label) {
   timer.label = label; timer.finished = false;
   const bar = document.getElementById('restbar');
   bar.hidden = false; bar.classList.add('show');
-  bar.querySelector('.rest-range').textContent = `${min}–${max}s`;
+  bar.querySelector('.rest-range').textContent = restLabel([min, max]);
   clearInterval(timer.tick);
   timer.tick = setInterval(renderTimer, 250);
   renderTimer();

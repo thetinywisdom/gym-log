@@ -15,7 +15,9 @@
 //    rest       [min, max] rest in seconds after each set
 //    optional   true → hidden unless toggled on in the log
 //    primary / secondary   muscle ids (see MUSCLES below)
-//    options    for "A or B" slots: the user picks one per session
+//    options    for "A or B" slots: the user picks one per session (history stays per option id)
+//    bothSets   on an options slot: offer "Both free" = log this many sets of every option
+//    weight: null on a non-bodyweight exercise = blank; you type it the first time, then the last weight is used
 //
 //  Muscle ids:
 //    chest, frontDelts, sideDelts, rearDelts, traps, lats, midBack, lowerBack,
@@ -25,6 +27,7 @@
 const SHOULDERS = ['frontDelts', 'sideDelts', 'rearDelts'];
 const REST_KB = [60, 90];
 const REST_HEAVY = [90, 120];
+const REST_2MIN = [120, 120];
 
 export const PROGRAM = {
   name: '12-Week Home Training',
@@ -72,23 +75,29 @@ export const PROGRAM = {
       id: 'upper',
       name: 'Upper Body',
       short: 'Upper',
-      durationMin: 50,
+      durationMin: 60, // ~55–60 min
       exercises: [
-        { id: 'chest-press', name: 'Chest Press', sets: 3, reps: [6, 8], weight: 42.5, rest: REST_HEAVY,
+        { id: 'chest-press', name: 'Chest Press', sets: 3, reps: [6, 8], weight: 42.5, rest: REST_2MIN,
           primary: ['chest'], secondary: ['triceps', 'frontDelts'] },
-        { id: 'iso-row', name: 'Iso-Lateral Row', sets: 3, reps: [6, 8], weight: 45, rest: REST_HEAVY,
-          primary: ['lats', 'midBack'], secondary: ['biceps', 'rearDelts'] },
-        { id: 'shoulder-press', name: 'Shoulder Press', sets: 3, reps: [6, 8], weight: 70, rest: REST_HEAVY,
-          note: 'Weight as logged in your app.',
-          primary: ['frontDelts', 'sideDelts'], secondary: ['triceps', 'chest'] },
-        { id: 'triceps-ext', name: 'Triceps Extension', sets: 3, reps: [8, 10], weight: 21.25, step: 1.25, rest: REST_HEAVY,
-          primary: ['triceps'], secondary: [] },
-        { id: 'fly-or-pulldown', name: 'Chest Fly or Lat Pulldown', sets: 3, reps: [10, 12], weight: null, rest: REST_HEAVY,
+        // Pull slot: pick whichever machine is free. "Both free" logs bothSets of each.
+        // History & progress stay per exercise (iso-row / lat-pulldown).
+        { id: 'pull-slot', name: 'Pull', hint: 'Pick whichever machine is free', sets: 4, reps: [6, 8], rest: REST_2MIN,
+          bothSets: 3, bothLabel: 'Both free',
           options: [
-            { id: 'chest-fly', name: 'Chest Fly', primary: ['chest'], secondary: ['frontDelts'] },
-            { id: 'lat-pulldown', name: 'Lat Pulldown', primary: ['lats'], secondary: ['biceps', 'rearDelts'] },
+            { id: 'iso-row', name: 'Iso-Lateral Row', weight: 45,
+              primary: ['lats', 'midBack'], secondary: ['biceps', 'rearDelts'] },
+            { id: 'lat-pulldown', name: 'Lat Pulldown', weight: null,
+              primary: ['lats'], secondary: ['biceps', 'rearDelts', 'traps'] },
           ] },
-        { id: 'hammer-curl', name: 'Hammer Curl', sets: 3, reps: [8, 12], weight: 20, rest: REST_HEAVY,
+        { id: 'shoulder-press', name: 'Shoulder Press', sets: 3, reps: [6, 8], weight: 70, rest: REST_2MIN,
+          primary: ['frontDelts', 'sideDelts'], secondary: ['triceps', 'chest'] },
+        { id: 'chest-fly', name: 'Chest Fly', sets: 3, reps: [10, 12], weight: null, rest: [90, 90],
+          primary: ['chest'], secondary: ['frontDelts'] },
+        { id: 'reverse-fly', name: 'Reverse Fly', sets: 3, reps: [12, 15], weight: null, rest: [60, 90],
+          primary: ['rearDelts'], secondary: ['traps', 'midBack'] },
+        { id: 'triceps-ext', name: 'Triceps Extension', sets: 3, reps: [8, 10], weight: 21.25, step: 1.25, rest: [90, 90],
+          primary: ['triceps'], secondary: [] },
+        { id: 'hammer-curl', name: 'Hammer Curl', sets: 3, reps: [8, 12], weight: 20, rest: [60, 90],
           primary: ['brachialis', 'biceps'], secondary: ['forearms'] },
       ],
     },
@@ -148,12 +157,23 @@ export function allExercises() {
 }
 
 /** For an "A or B" slot, returns a full exercise object for the chosen option. */
-export function resolveOption(slot, optionId, workoutId) {
+export function resolveOption(slot, optionId, workoutId, sets) {
   const o = slot.options.find((x) => x.id === optionId) || slot.options[0];
-  const { options, ...base } = slot;
-  return { ...base, ...o, slot: slot.id, workout: workoutId };
+  const { options, id, name, hint, bothSets, bothLabel, ...base } = slot;
+  return { ...base, weight: null, ...o, sets: sets ?? slot.sets, minSets: Math.min(slot.sets, bothSets ?? slot.sets), slot: slot.id, workout: workoutId };
+}
+
+/** Exercises for a slot given a choice: one option, or all options when choice === 'both'. */
+export function resolveSlot(slot, choice, workoutId) {
+  if (choice === 'both' && slot.bothSets) return slot.options.map((o) => resolveOption(slot, o.id, workoutId, slot.bothSets));
+  return [resolveOption(slot, choice, workoutId)];
 }
 
 export function findExercise(id) { return allExercises().find((e) => e.id === id); }
 export function repRange(ex) { return Array.isArray(ex.reps) ? ex.reps : [ex.reps, ex.reps]; }
+/** Rest label: [120,120] → "2 min", [90,90] → "90s", [60,90] → "60–90s". */
+export function restLabel([a, b]) {
+  const one = (x) => (x >= 120 && x % 60 === 0 ? `${x / 60} min` : `${x}s`);
+  return a === b ? one(a) : `${a}–${b}s`;
+}
 export function repLabel(ex) { const [a, b] = repRange(ex); return a === b ? `${a}` : `${a}–${b}`; }

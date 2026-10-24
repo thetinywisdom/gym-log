@@ -1,6 +1,6 @@
 // Simple offline service worker: precache the app shell, then stale-while-revalidate same-origin GETs.
 // Bump VERSION whenever you deploy changes so phones pick up the new files.
-const VERSION = 'fitlog-v1.0.1';
+const VERSION = 'fitlog-v1.1.0';
 const SHELL = [
   './', './index.html', './styles.css', './manifest.webmanifest', './firebase-config.js',
   './js/app.js', './js/program.js', './js/store.js', './js/utils.js', './js/logic.js', './js/ui.js', './js/muscles.js', './js/sync.js',

@@ -6,6 +6,7 @@ A small, mobile-first workout app. It's plain HTML, CSS and JavaScript with no b
   - Fields start with the target reps and your last weight. Use the ± steppers (2.5 kg, or 1.25 kg for triceps extension) or type a value, then tap ✓.
   - Tapping ✓ starts a rest timer. Optional exercises can be switched on or off.
   - A **Ready to progress** badge appears once you hit the top of the rep range on every set. Tap it to apply the next weight.
+- **Upper Body pull slot:** pick whichever machine is free: **Iso-Lateral Row** or **Lat Pulldown** (4 sets), or **Both free** (3 sets of each). History and the progress badge stay per exercise. Exercises without a starting weight (Lat Pulldown, Chest Fly, Reverse Fly) start blank; type your weight the first time and it's remembered after that.
 - **Schedule:** a weekly plan you can edit (day and time, plus adding or removing sessions), with a 3-day/4-day toggle.
   - Progress through the 12-week program is shown, with deload weeks 4, 8 and 12 highlighted. Logged days get a ✓.
 - **Muscles:** front and back body maps showing the primary (bright) and secondary (dim) muscles. You can view them per exercise, per session, or as a heatmap of sets per muscle this week.
@@ -52,7 +53,10 @@ Data layout: `users/{uid}/meta/state` holds settings and schedule, and `users/{u
 
 Everything about the plan lives in `js/program.js`:
 - start date, number of weeks, deload weeks
-- each workout's exercises (sets, rep range, plan weight, rest, step size, bodyweight/optional/per-side flags, primary and secondary muscles)
+- each workout's exercises (sets, rep range, plan weight or `null` for blank, rest, step size, bodyweight/optional/per-side flags, primary and secondary muscles)
+- "pick one" slots (`options`, plus `bothSets` for a "Both free" choice), like the Upper Body pull slot
+
+History is keyed by exercise `id`, so keep ids stable when you rename or reorder things.
 - the default 3-day and 4-day schedules
 
 Muscle ids must be one of the 19 keys in `MUSCLES`. Changing `schedules` only affects new installs, or the next time you press the 3-day/4-day toggle.

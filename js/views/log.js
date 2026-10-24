@@ -1,4 +1,4 @@
-import { PROGRAM, getWorkout, repRange, repLabel, MUSCLES } from '../program.js';
+import { PROGRAM, getWorkout, repRange, repLabel, restLabel, resolveSlot, MUSCLES } from '../program.js';
 import { store } from '../store.js';
 import { prefillSets, lastFor, readyToProgress, nextWeight, sessionExercises, programWeek, scheduledOn, nextScheduled, bestFor } from '../logic.js';
 import { todayISO, fmtDate, addMinutes, esc, fmtKg, uid, DOW_SHORT } from '../utils.js';
@@ -32,8 +32,12 @@ function getDraft() {
 }
 
 function ensureSets(d, ex) {
-  if (!d.sets[ex.id]) d.sets[ex.id] = prefillSets(ex);
-  return d.sets[ex.id];
+  let arr = d.sets[ex.id];
+  if (!Array.isArray(arr)) arr = d.sets[ex.id] = prefillSets(ex);
+  // Planned set count can change (e.g. pull slot 4 sets ↔ "Both free" 3 sets, or an older saved draft):
+  if (arr.length < ex.sets) arr.push(...prefillSets(ex).slice(arr.length));
+  while (arr.length > ex.sets && !arr[arr.length - 1].done) arr.pop();
+  return arr;
 }
 
 function activeExercises(d, includeOptional = false) {
@@ -89,7 +93,7 @@ export function renderLog(el) {
   ${pw.deload ? `<div class="note deload-note">${esc(PROGRAM.deloadHint)}</div>` : ''}
   ${d.date !== today ? `<div class="note">Unsaved workout from ${fmtDate(d.date)} — save or discard it below.</div>` : ''}
   <div class="ex-list">
-    ${w.exercises.map((slot) => exerciseCard(d, slot)).join('')}
+    ${w.exercises.map((slot) => slotHtml(d, slot)).join('')}
   </div>
   <section class="card finish">
     <label class="field"><span>Workout date</span><input type="date" data-f="date" value="${d.date}" max="${today}"></label>
@@ -99,27 +103,47 @@ export function renderLog(el) {
   keepAwake(true);
 }
 
-function exerciseCard(d, slot) {
-  const ex = slot.options ? sessionExercises(d.workoutId, d, true).find((e) => e.slot === slot.id) : { ...slot, workout: d.workoutId };
+function slotHtml(d, slot) {
+  if (!slot.options) return exerciseCard(d, slot, { ...slot, workout: d.workoutId });
+  const choice = slotChoice(slot, d.choices[slot.id]);
+  const exs = resolveSlot(slot, choice, d.workoutId);
+  const btns = [...slot.options.map((o) => [o.id, o.name]), ...(slot.bothSets ? [['both', slot.bothLabel || 'Both']] : [])];
+  const sub = choice === 'both' ? `${slot.bothSets} sets of each` : `${slot.sets} × ${repLabel(slot)}`;
+  return `<section class="slot card" data-slot="${slot.id}">
+    <div class="slot-head"><b>${esc(slot.name)} slot</b><span class="muted small">${esc(slot.hint || 'Pick one')} · ${esc(sub)}</span></div>
+    <div class="seg small slot-pick" role="radiogroup" aria-label="${esc(slot.name)} slot">${btns.map(([id, label]) => `<button role="radio" aria-checked="${id === choice}" class="${id === choice ? 'on' : ''}" data-act="pick-option" data-slot="${slot.id}" data-opt="${id}">${esc(label)}</button>`).join('')}</div>
+  </section>
+  ${exs.map((ex) => exerciseCard(d, slot, ex)).join('')}`;
+}
+
+function slotChoice(slot, c) {
+  if (c === 'both' && slot.bothSets) return 'both';
+  return slot.options.some((o) => o.id === c) ? c : slot.options[0].id;
+}
+
+function exerciseCard(d, slot, ex) {
   const isOff = slot.optional && !d.optionalOn[slot.id];
   const sets = ensureSets(d, ex);
   const last = lastFor(ex.id);
   const ready = readyToProgress(ex);
   const allDone = sets.length && sets.every((s) => s.done);
   const target = `${ex.sets} × ${repLabel(ex)}${ex.perSide ? '/leg' : ''}${ex.bodyweight ? ' · bodyweight' : ex.weight != null ? ` · ${fmtKg(ex.weight)} kg` : ''}`;
-  const lastTxt = last ? `Last ${fmtDate(last.date, { weekday: false })}: ${last.sets.map((s) => (ex.bodyweight ? s.reps : `${fmtKg(s.weight)}×${s.reps}`)).join(', ')}` : 'First time — plan weight prefilled';
+  const lastTxt = last ? `Last ${fmtDate(last.date, { weekday: false })}: ${last.sets.map((s) => (ex.bodyweight || s.weight == null ? s.reps : `${fmtKg(s.weight)}×${s.reps}`)).join(', ')}`
+    : ex.bodyweight ? 'First time' : ex.weight == null ? 'First time — type the weight you use' : 'First time — plan weight prefilled';
   let readyHtml = '';
-  if (ready && !ex.bodyweight) {
-    const lw = last.sets[0].weight ?? ex.weight ?? 0;
+  const lw0 = ready ? (last.sets[0].weight ?? ex.weight) : null;
+  if (ready && !ex.bodyweight && lw0 == null) readyHtml = `<span class="badge ready">${ICON.up} Ready to progress · add weight</span>`;
+  else if (ready && !ex.bodyweight) {
+    const lw = lw0;
     const nw = nextWeight(ex, lw);
     readyHtml = `<button class="badge ready" data-act="progress" data-ex="${ex.id}" data-w="${nw.weight}">${ICON.up} Ready to progress · tap for ${fmtKg(nw.weight)} kg${nw.kb && nw.kb !== nw.weight ? ` (or ${fmtKg(nw.kb)} kg bell)` : ''}</button>`;
   } else if (ready) readyHtml = `<span class="badge ready">${ICON.up} Ready to progress · add reps</span>`;
 
-  return `<article class="ex card ${allDone ? 'all-done' : ''} ${isOff ? 'off' : ''}" data-ex="${ex.id}" data-slot="${slot.id}">
+  return `<article class="ex card ${allDone ? 'all-done' : ''} ${isOff ? 'off' : ''} ${slot.options ? 'in-slot' : ''}" data-ex="${ex.id}" data-slot="${slot.id}">
     <header class="ex-head">
       <button class="ex-title" data-act="ex-map" data-ex="${ex.id}" aria-label="Show muscles for ${esc(ex.name)}">
         <span class="ex-name">${esc(ex.name)}${slot.optional ? ' <span class="tag">optional</span>' : ''}</span>
-        <span class="ex-target">${esc(target)} · rest ${ex.rest[0]}–${ex.rest[1]}s</span>
+        <span class="ex-target">${esc(target)} · rest ${restLabel(ex.rest)}</span>
         <span class="ex-muscles">${ex.primary.map((m) => MUSCLES[m]).join(', ')}</span>
       </button>
       ${slot.optional
@@ -127,7 +151,6 @@ function exerciseCard(d, slot) {
         : `<button class="icon-btn" data-act="ex-map" data-ex="${ex.id}" aria-label="Muscles">${ICON.body}</button>`}
     </header>
     ${isOff ? '' : `
-    ${slot.options ? `<div class="seg small">${slot.options.map((o) => `<button class="${o.id === ex.id ? 'on' : ''}" data-act="pick-option" data-slot="${slot.id}" data-opt="${o.id}">${esc(o.name)}</button>`).join('')}</div>` : ''}
     <div class="ex-meta">${readyHtml}<span class="muted small">${esc(lastTxt)}</span>${ex.note ? `<span class="muted small">${esc(ex.note)}</span>` : ''}</div>
     <div class="sets ${ex.bodyweight ? 'bw' : ''}">
       <div class="set-head"><span>Set</span>${ex.bodyweight ? '' : '<span>Weight kg</span>'}<span>Reps${ex.perSide ? ' / leg' : ''}</span><span></span></div>
@@ -179,7 +202,13 @@ export function logClick(e, el, rerender) {
     if (draftHasProgress(d) && !confirm('Switch workout? Sets you have marked done will be cleared.')) return;
     store.state.draft = newDraft(b.dataset.w); saveDraft(); stopRest(); return rerender();
   }
-  if (act === 'pick-option') { d.choices[b.dataset.slot] = b.dataset.opt; saveDraft(); return rerender(); }
+  if (act === 'pick-option') {
+    const slot = getWorkout(d.workoutId).exercises.find((x) => x.id === b.dataset.slot);
+    const prev = slot ? resolveSlot(slot, d.choices[slot.id], d.workoutId) : [];
+    const lost = prev.filter((ex) => !resolveSlot(slot, b.dataset.opt, d.workoutId).some((n) => n.id === ex.id) && (d.sets[ex.id] || []).some((s) => s.done));
+    if (lost.length && !confirm(`${lost.map((x) => x.name).join(' & ')} has sets marked done. Switch anyway? Those sets won't be saved.`)) return;
+    d.choices[b.dataset.slot] = b.dataset.opt; saveDraft(); return rerender();
+  }
   if (act === 'session-map') return showSessionMap(d);
   if (act === 'ex-map') return showExerciseMap(exFromCard(d, card));
   if (act === 'progress') {

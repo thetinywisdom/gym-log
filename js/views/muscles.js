@@ -15,7 +15,8 @@ export function renderMuscles(el) {
   let body = '';
 
   if (st.mode === 'session') {
-    const exs = sessionExercises(st.workout, {}, st.optional);
+    const allChoices = Object.fromEntries(PROGRAM.workouts[st.workout].exercises.filter((x) => x.bothSets).map((x) => [x.id, 'both']));
+    const exs = sessionExercises(st.workout, { choices: allChoices }, st.optional);
     const lv = combinedLevels(exs);
     body = `<div class="seg">${Object.values(PROGRAM.workouts).map((w) => `<button class="${w.id === st.workout ? 'on' : ''}" data-act="m-workout" data-w="${w.id}">${esc(w.name)}</button>`).join('')}</div>
       ${st.workout === 'kb' ? `<label class="check-row"><input type="checkbox" data-act="m-opt" ${st.optional ? 'checked' : ''}> Include optional exercises</label>` : ''}

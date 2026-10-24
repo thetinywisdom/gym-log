@@ -13,7 +13,7 @@ function defaultSchedule(mode = '3day') {
 function fresh() {
   const now = Date.now();
   return {
-    schema: 1,
+    schema: 2,
     settings: { planMode: '3day', sound: true, vibrate: true, keepAwake: true, updatedAt: now },
     schedule: { items: defaultSchedule('3day'), updatedAt: now },
     sessions: {},      // id -> session
@@ -22,13 +22,34 @@ function fresh() {
   };
 }
 
+/** Upgrade older saved data in place. Saved sessions are never rewritten — exercise ids are stable. */
+export function migrate(st) {
+  if ((st.schema || 1) < 2) {
+    // v1 Upper Body had an either/or "fly-or-pulldown" slot; v2 has Chest Fly on its own and a
+    // Row / Pulldown "pull-slot". Carry an in-progress draft over so done sets stay visible.
+    const d = st.draft;
+    if (d && d.choices && 'fly-or-pulldown' in d.choices) {
+      const pd = (d.sets?.['lat-pulldown'] || []).some((x) => x.done);
+      if (pd) d.choices['pull-slot'] = 'both';
+      delete d.choices['fly-or-pulldown'];
+    }
+    st.schema = 2;
+  }
+  if (st.draft && typeof st.draft === 'object') {
+    st.draft.choices ||= {}; st.draft.optionalOn ||= {}; st.draft.sets ||= {};
+  }
+  return st;
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return fresh();
     const s = JSON.parse(raw);
     const base = fresh();
-    return { ...base, ...s, settings: { ...base.settings, ...s.settings } };
+    const wasSchema = s.schema || 1;
+    if (wasSchema < base.schema) queueMicrotask(() => store.persist());
+    return migrate({ ...base, ...s, settings: { ...base.settings, ...s.settings } });
   } catch (e) {
     console.warn('Could not read saved data, starting fresh', e);
     return fresh();
