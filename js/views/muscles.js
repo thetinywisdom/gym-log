@@ -1,7 +1,8 @@
 import { PROGRAM, MUSCLES, repLabel, allExercises, setsLabel } from '../program.js';
 import { sessionExercises, weeklyMuscleSets, sessionsInWeek } from '../logic.js';
 import { bodyMap, exerciseLevels, combinedLevels } from '../muscles.js';
-import { muscleListHtml } from './log.js';
+import { muscleListHtml, watchHtml } from './log.js';
+import { openWatch } from '../watch.js';
 import { todayISO, mondayOf, addDays, fmtDate, esc } from '../utils.js';
 import { ICON } from '../ui.js';
 
@@ -31,7 +32,7 @@ export function renderMuscles(el) {
     const ex = all.find((e) => e.id === st.exId) || all[0];
     body = `${groups.map((g) => `<h3>${esc(g.w.name)}</h3><div class="chip-list scroll">${g.exs.map((e) => `<button class="pill ${e.id === ex.id ? 'on' : ''}" data-act="m-ex" data-ex="${e.id}">${esc(e.name)}</button>`).join('')}</div>`).join('')}
       <div class="map-card"><div class="map-title"><b>${esc(ex.name)}</b><span class="muted small">${setsLabel(ex)}</span></div>${bodyMap(exerciseLevels(ex))}</div>
-      ${legend()}${muscleListHtml(ex)}`;
+      ${legend()}${muscleListHtml(ex)}${watchHtml(ex)}`;
   } else {
     const counts = weeklyMuscleSets(st.monday);
     const max = Math.max(8, ...Object.values(counts));
@@ -70,6 +71,7 @@ export function musclesClick(e, el, rerender) {
   else if (a === 'm-ex') { st.exId = b.dataset.ex; st.mode = 'exercise'; }
   else if (a === 'm-wk') st.monday = addDays(st.monday, +b.dataset.d);
   else if (a === 'm-opt') { st.optional = b.checked; }
+  else if (a === 'watch') { if (e.type === 'click') { const ex = allExercises().find((x) => x.id === b.dataset.ex); if (ex) openWatch([{ id: ex.id, name: ex.name }]); } return; }
   else return;
   rerender();
   if (a === 'm-ex') el.querySelector('.pill.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });

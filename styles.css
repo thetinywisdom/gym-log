@@ -316,3 +316,16 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid 
 .slot-pick button.on { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
 .ex.in-slot { border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
 .slot-pick button { white-space: nowrap; font-size: 0.82rem; padding: 0 6px; }
+
+/* ---------- ▶ Watch: shared 3D exercise player sheet ---------- */
+.watch-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, var(--bg2)); color: var(--accent); border: 1px solid rgba(184, 240, 74, 0.3); font-weight: 700; font-size: 0.85rem; flex: none; }
+.watch-btn svg { width: 14px; height: 14px; }
+.watch-open { margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.watch-open svg { width: 16px; height: 16px; }
+.watch .sheet-panel { overflow: hidden; height: min(86dvh, 760px); display: flex; flex-direction: column; }
+.watch-head { display: flex; align-items: center; gap: 8px; margin: -4px 0 8px; min-height: 44px; }
+.watch-head .watch-tabs { flex: 1; margin: 0; }
+.watch-head .icon-btn { margin-left: auto; }
+.watch-stage { flex: 1; min-height: 0; position: relative; }
+.watch-stage .xp { position: absolute; inset: 0; min-height: 0; }
+.watch-err { color: var(--muted); text-align: center; padding: 40px 16px; }

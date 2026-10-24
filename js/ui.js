@@ -15,6 +15,7 @@ export const ICON = {
   minus: sv('<path d="M5 12h14"/>', 'stroke-width="2.4"'),
   chevL: sv('<path d="M15 5l-7 7 7 7"/>'),
   chevR: sv('<path d="M9 5l7 7-7 7"/>'),
+  play: sv('<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>', 'stroke-width="1.5"'),
   close: sv('<path d="M6 6l12 12M18 6L6 18"/>'),
   body: sv('<circle cx="12" cy="4.5" r="2"/><path d="M5 8.5c2.3.8 4.6 1.2 7 1.2s4.7-.4 7-1.2M12 9.7V15m0 0-2.5 6.5M12 15l2.5 6.5"/>'),
   up: sv('<path d="M12 19V5M5 12l7-7 7 7"/>'),

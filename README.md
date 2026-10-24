@@ -75,7 +75,10 @@ js/store.js    localStorage state     js/logic.js    progression, schedule, stat
 js/muscles.js  SVG body map           js/sync.js     optional Firebase sync
 js/ui.js       sheet, toast, rest timer, icons
 js/views/      log, schedule, muscles, history, settings
+js/watch.js    ▶ Watch sheet: one shared 3D player, lazy-loads anim/ on first tap
+anim/          Three.js r170 (vendored) rig, muscle-map mannequin, one clip per exercise
 tests/qa.mjs   Playwright end-to-end check (phone viewport)
+tests/watch-qa.mjs  ▶ Watch player check (open/switch/close ×10, one WebGL context)
 screenshots/   QA screenshots
 ```
 
@@ -85,4 +88,5 @@ screenshots/   QA screenshots
 npm i playwright-core          # in this folder (or anywhere on your NODE_PATH)
 python3 -m http.server 8765 &
 CHROME=/path/to/chrome node tests/qa.mjs http://localhost:8765/
+CHROME=/path/to/chrome node tests/watch-qa.mjs http://localhost:8765/
 ```

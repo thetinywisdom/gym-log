@@ -6,6 +6,7 @@ import { renderMuscles, musclesClick } from './views/muscles.js';
 import { renderHistory, historyClick } from './views/history.js';
 import { renderSettings, settingsClick, settingsChange } from './views/settings.js';
 import { initSync, onSyncStatus, syncEnabled } from './sync.js';
+import { initWatch, closeWatch } from './watch.js';
 
 const ROUTES = {
   log: { title: 'Today', render: renderLog, click: logClick, change: logChange },
@@ -38,6 +39,7 @@ function navigate() {
   const changed = next !== current;
   current = next;
   if (current !== 'log') keepAwake(false);
+  closeWatch();
   render();
   if (changed) window.scrollTo(0, 0);
 }
@@ -59,6 +61,7 @@ onSyncStatus((s) => {
 document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = ICON[el.dataset.icon]; });
 
 initSheet();
+initWatch();
 initRestbar();
 current = routeFromHash();
 render();

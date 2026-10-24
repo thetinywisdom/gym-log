@@ -4,6 +4,7 @@ import { prefillSets, lastFor, readyToProgress, nextWeight, sessionExercises, pr
 import { todayISO, fmtDate, addMinutes, esc, fmtKg, uid, DOW_SHORT } from '../utils.js';
 import { ICON, toast, openSheet, closeSheet, startRest, stopRest, keepAwake } from '../ui.js';
 import { bodyMap, exerciseLevels, combinedLevels } from '../muscles.js';
+import { canWatch, openWatch } from '../watch.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
@@ -151,7 +152,7 @@ function exerciseCard(d, slot, ex) {
         : `<button class="icon-btn" data-act="ex-map" data-ex="${ex.id}" aria-label="Muscles">${ICON.body}</button>`}
     </header>
     ${isOff ? '' : `
-    <div class="ex-meta">${readyHtml}<span class="muted small">${esc(lastTxt)}</span>${ex.note ? `<span class="muted small">${esc(ex.note)}</span>` : ''}</div>
+    <div class="ex-meta">${canWatch(ex.id) ? `<button class="watch-btn" data-act="watch" data-ex="${ex.id}" aria-label="Watch how to do ${esc(ex.name)}">${ICON.play} Watch</button>` : ''}${readyHtml}<span class="muted small">${esc(lastTxt)}</span>${ex.note ? `<span class="muted small">${esc(ex.note)}</span>` : ''}</div>
     <div class="sets ${ex.bodyweight ? 'bw' : ''}">
       <div class="set-head"><span>Set</span>${ex.bodyweight ? '' : '<span>Weight kg</span>'}<span>Reps${sideOf(ex) ? ` / ${sideOf(ex)}` : ''}</span><span></span></div>
       ${sets.map((s, i) => setRow(ex, s, i)).join('')}
@@ -210,7 +211,8 @@ export function logClick(e, el, rerender) {
     d.choices[b.dataset.slot] = b.dataset.opt; saveDraft(); return rerender();
   }
   if (act === 'session-map') return showSessionMap(d);
-  if (act === 'ex-map') return showExerciseMap(exFromCard(d, card));
+  if (act === 'ex-map') { const ex = exFromCard(d, card); return showExerciseMap(ex, watchList(d, card.dataset.slot, ex)); }
+  if (act === 'watch') return watchFromCard(d, card);
   if (act === 'progress') {
     const ex = exFromCard(d, card);
     ensureSets(d, ex).forEach((s) => { if (!s.done) s.weight = +b.dataset.w; });
@@ -306,10 +308,29 @@ export function muscleListHtml(ex) {
   </div>`;
 }
 
-export function showExerciseMap(ex) {
+export function watchHtml(ex) {
+  return canWatch(ex.id) ? `<button class="btn block watch-open" data-act="watch" data-ex="${esc(ex.id)}">${ICON.play} Watch how it's done</button>` : '';
+}
+
+export function showExerciseMap(ex, list = [ex]) {
   const best = bestFor(ex.id);
   openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${setsLabel(ex)}${best ? ` · best ${fmtKg(best.weight)} kg × ${best.reps}` : ''}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
-    ${bodyMap(exerciseLevels(ex))}${muscleListHtml(ex)}`);
+    ${bodyMap(exerciseLevels(ex))}${muscleListHtml(ex)}${watchHtml(ex)}`, (e) => {
+    if (e.type === 'click' && e.target.closest('[data-act="watch"]')) { closeSheet(); openWatch(list, ex.id); }
+  });
+}
+
+// ▶ Watch: a card inside the pull slot offers the slot's current choice(s) — row, pulldown, or both when "Both free".
+function watchFromCard(d, card) {
+  const ex = exFromCard(d, card);
+  if (!ex) return;
+  openWatch(watchList(d, card.dataset.slot, ex), ex.id);
+}
+
+function watchList(d, slotId, ex) {
+  const slot = getWorkout(d.workoutId).exercises.find((x) => x.id === slotId);
+  if (!slot?.options) return [{ id: ex.id, name: ex.name }];
+  return resolveSlot(slot, slotChoice(slot, d.choices[slot.id]), d.workoutId).map((x) => ({ id: x.id, name: x.name }));
 }
 
 export function showSessionMap(d) {
