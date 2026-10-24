@@ -141,8 +141,7 @@ function exerciseCard(d, slot, ex) {
   const allDone = sets.length && sets.every((s) => s.done);
   const target = ex.equipId ? `${setsLabel(ex)} · ${equipLine(ex, last)}`
     : `${setsLabel(ex)}${ex.bodyweight ? ' · bodyweight' : ex.weight != null ? ` · ${fmtKg(ex.weight)} kg` : ''}`;
-  const lastTxt = last?.imported ? `Last ${fmtDate(last.date, { weekday: false })} (imported): ${last.setCount} sets, best ${last.sets.map((s) => (ex.bodyweight || s.weight == null ? `${s.reps} reps` : `${fmtKg(s.weight)}×${s.reps}`)).join(', ')}`
-    : last ? `Last ${fmtDate(last.date, { weekday: false })}: ${last.sets.map((s) => (ex.bodyweight || s.weight == null ? s.reps : `${fmtKg(s.weight)}×${s.reps}`)).join(', ')}`
+  const lastTxt = last ? `Last ${fmtDate(last.date, { weekday: false })}: ${last.sets.map((s) => (ex.bodyweight || s.weight == null ? s.reps : `${fmtKg(s.weight)}×${s.reps}`)).join(', ')}`
     : ex.bodyweight ? 'First time' : ex.weight == null ? 'First time — type the weight you use'
     : ex.equipId ? `First time with ${ex.equipName.toLowerCase()} — ${fmtKg(ex.weight)} kg each prefilled` : 'First time — plan weight prefilled';
   let readyHtml = '';

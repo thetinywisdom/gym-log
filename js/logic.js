@@ -3,6 +3,9 @@ import { PROGRAM, getWorkout, resolveSlot, repRange, findExercise, entryEquip, w
 import { store } from './store.js';
 import { todayISO, daysBetween, addDays, dowOf, mondayOf } from './utils.js';
 
+/** Sets that count: everything except warm-ups. */
+export const workingSets = (sets) => sets.filter((x) => x.type !== 'W');
+
 /** All logged entries for an exercise, newest first: [{date, sessionId, sets, equip}].
  *  With `equipId`, only entries done with that equipment (exercises with equipment variants). */
 export function historyFor(exId, equipId) {
@@ -13,10 +16,10 @@ export function historyFor(exId, equipId) {
     if (!e || !e.sets.length) continue;
     const equip = entryEquip(def, e);
     if (equipId && equip && equip !== equipId) continue;
-    // Imported entries: only the best set has numbers; count-only sets are left out here.
-    const sets = s.imported ? e.sets.filter((x) => !x.unknown) : e.sets;
+    // Working sets only: warm-ups (type 'W', from imported history) never count for prefill, bests or progress.
+    const sets = workingSets(e.sets);
     if (!sets.length) continue;
-    out.push({ date: s.date, sessionId: s.id, sets, equip, ...(s.imported ? { imported: true, setCount: e.sets.length } : {}) });
+    out.push({ date: s.date, sessionId: s.id, sets, equip, ...(s.imported ? { imported: true } : {}) });
   }
   return out;
 }
@@ -38,7 +41,7 @@ export function bestFor(exId, equipId) {
 /** Ready to progress when the last time every planned set hit the top of the rep range. */
 export function readyToProgress(ex) {
   const last = lastFor(ex.id, ex.equipId);
-  if (!last || last.imported) return false; // imported: per-set reps unknown
+  if (!last) return false;
   const top = repRange(ex)[1];
   return last.sets.length >= (ex.minSets ?? ex.sets) && last.sets.every((s) => (s.reps || 0) >= top);
 }
@@ -121,7 +124,7 @@ export function weeklyMuscleSets(mondayISO = mondayOf(todayISO())) {
     for (const e of s.exercises) {
       const ex = findExercise(e.id);
       if (!ex) continue;
-      const n = e.sets.length;
+      const n = workingSets(e.sets).length;
       for (const m of ex.primary || []) counts[m] = (counts[m] || 0) + n;
       for (const m of ex.secondary || []) counts[m] = (counts[m] || 0) + n * 0.5;
     }

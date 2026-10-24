@@ -68,7 +68,8 @@ function startSync(uid) {
       const r = ch.doc.data(); const id = ch.doc.id; remoteIds.add(id);
       const local = st.sessions[id]; const tomb = st.deleted[id];
       if (r.deleted) {
-        if (local && (local.updatedAt || 0) <= r.updatedAt) { delete st.sessions[id]; st.deleted[id] = r.updatedAt; changed = true; }
+        // A delete of an imported session always wins (imported copies are never edited).
+        if (local && (local.imported || (local.updatedAt || 0) <= r.updatedAt)) { delete st.sessions[id]; st.deleted[id] = r.updatedAt; changed = true; }
       } else if (!(tomb && tomb >= (r.updatedAt || 0)) && (!local || (r.updatedAt || 0) > (local.updatedAt || 0))) {
         st.sessions[id] = r; delete st.deleted[id]; changed = true;
       }

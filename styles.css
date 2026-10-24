@@ -355,3 +355,12 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid 
 /* imported history (js/history-import.js) */
 .tag.imp-tag { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--muted); }
 .imp-note { margin: 4px 0 10px; }
+.imp-ex-note { display: block; text-align: left !important; font-size: 0.74rem; color: var(--muted); margin-top: 2px; }
+.hist-ex .set { white-space: nowrap; }
+.st-badge { display: inline-block; min-width: 1.15em; margin-right: 3px; padding: 0 3px; border-radius: 4px; font-size: 0.68rem; line-height: 1.35; font-weight: 800; text-align: center; vertical-align: 1px; }
+.set.st-w { opacity: 0.75; }
+.set.st-w .st-badge { background: rgba(255, 176, 64, 0.18); color: #ffb040; }
+.set.st-f .st-badge { background: rgba(255, 107, 107, 0.18); color: var(--danger); }
+.set.st-d .st-badge { background: rgba(167, 120, 255, 0.2); color: #b38cff; }
+.hist-ex > span:first-child { flex: 0 1 auto; min-width: 7.5em; }
+.hist-sets { flex: 1 1 auto; min-width: 0; text-align: right; line-height: 1.6; }
