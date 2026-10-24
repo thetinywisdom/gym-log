@@ -1,4 +1,4 @@
-import { PROGRAM, MUSCLES, repLabel, allExercises } from '../program.js';
+import { PROGRAM, MUSCLES, repLabel, allExercises, setsLabel } from '../program.js';
 import { sessionExercises, weeklyMuscleSets, sessionsInWeek } from '../logic.js';
 import { bodyMap, exerciseLevels, combinedLevels } from '../muscles.js';
 import { muscleListHtml } from './log.js';
@@ -26,11 +26,11 @@ export function renderMuscles(el) {
       <h3>Exercises</h3>
       <div class="chip-list">${exs.map((e) => `<button class="pill" data-act="m-ex" data-ex="${e.id}">${esc(e.name)}</button>`).join('')}</div>`;
   } else if (st.mode === 'exercise') {
-    const groups = Object.values(PROGRAM.workouts).map((w) => ({ w, exs: allExercises().filter((e) => e.workout === w.id) }));
+    const groups = Object.values(PROGRAM.workouts).map((w) => ({ w, exs: allExercises().filter((e) => e.workout === w.id && !e.retired) }));
     const all = groups.flatMap((g) => g.exs);
     const ex = all.find((e) => e.id === st.exId) || all[0];
     body = `${groups.map((g) => `<h3>${esc(g.w.name)}</h3><div class="chip-list scroll">${g.exs.map((e) => `<button class="pill ${e.id === ex.id ? 'on' : ''}" data-act="m-ex" data-ex="${e.id}">${esc(e.name)}</button>`).join('')}</div>`).join('')}
-      <div class="map-card"><div class="map-title"><b>${esc(ex.name)}</b><span class="muted small">${ex.sets} × ${repLabel(ex)}${ex.perSide ? '/leg' : ''}</span></div>${bodyMap(exerciseLevels(ex))}</div>
+      <div class="map-card"><div class="map-title"><b>${esc(ex.name)}</b><span class="muted small">${setsLabel(ex)}</span></div>${bodyMap(exerciseLevels(ex))}</div>
       ${legend()}${muscleListHtml(ex)}`;
   } else {
     const counts = weeklyMuscleSets(st.monday);

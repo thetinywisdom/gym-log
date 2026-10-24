@@ -43,6 +43,13 @@ await card('goblet-squat').scrollIntoViewIfNeeded();
 await page.evaluate(() => window.scrollBy(0, -140));
 await page.waitForTimeout(400);
 await page.screenshot({ path: SHOTS + '01-log-mid-workout.png' });
+const tgt = async (id) => (await card(id).locator('.ex-target').textContent()).trim();
+ok('KB Oblique: 3 × 12 each side · 15.5 kg', /^3 × 12 each side · 15\.5 kg/.test(await tgt('kb-oblique')), await tgt('kb-oblique'));
+ok('KB Around: 3 × 12 each direction · 15.5 kg', /^3 × 12 each direction · 15\.5 kg/.test(await tgt('kb-around')), await tgt('kb-around'));
+ok('Oblique/Around prefill 15.5', (await card('kb-oblique').locator('.set-row[data-i="0"] input[data-f="weight"]').inputValue()) === '15.5' && (await card('kb-around').locator('.set-row[data-i="0"] input[data-f="weight"]').inputValue()) === '15.5');
+ok('Reverse Lunge: 3 × 8 each leg · 11 kg + goblet note', /^3 × 8 each leg · 11 kg/.test(await tgt('reverse-lunge')) && /Goblet hold at chest/.test(await card('reverse-lunge').textContent()), await tgt('reverse-lunge'));
+ok('Reps header says / side', /Reps \/ side/.test(await card('kb-oblique').locator('.set-head').textContent()));
+ok('KB Hammer Curl still optional on KB day', (await card('kb-hammer-curl').locator('[data-act="toggle-opt"]').count()) === 1);
 ok('Push Up is reps-only', (await card('push-up').locator('input[data-f="weight"]').count()) === 0);
 
 // draft persists across reload mid-workout
@@ -114,7 +121,7 @@ await page.tap('#sheet [data-act="f-save"]'); await page.waitForTimeout(300);
 await page.reload(); await page.waitForSelector('.days');
 const wed = await page.locator('.day', { hasText: 'Wed' }).textContent();
 ok('Schedule edit persisted after reload (Wed 19:30)', /19:30–20:35/.test(wed), wed.replace(/\s+/g, ' ').trim());
-ok('Added Sat session persisted', /10:00–11:00/.test(await page.locator('.day', { hasText: 'Sat' }).textContent()));
+ok('Added Sat session persisted', /10:00–10:55/.test(await page.locator('.day', { hasText: 'Sat' }).textContent()));
 ok('Sat 24 shows logged workout', /logged/.test(await page.locator('.day', { hasText: 'Sat' }).textContent()));
 await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: SHOTS + '02-schedule.png' });
@@ -144,7 +151,9 @@ ok('Exercise picker: Lat Pulldown primary = lats', (await page.$$eval('#view .m.
 await page.goto(BASE + '#/log'); await page.waitForSelector('.ex');
 await page.tap('[data-act="pick-workout"][data-w="upper"]');
 const order = await page.$$eval('.ex', (els) => els.map((e) => e.dataset.ex));
-ok('Upper order: press, pull(row), shoulder, fly, reverse fly, triceps, curl', order.join() === 'chest-press,iso-row,shoulder-press,chest-fly,reverse-fly,triceps-ext,hammer-curl', order.join());
+ok('Upper order: press, pull(row), shoulder, fly, reverse fly, pushdown (no hammer curl)', order.join() === 'chest-press,iso-row,shoulder-press,chest-fly,reverse-fly,triceps-ext', order.join());
+ok('Triceps renamed: Triceps Pushdown (cable), 3 × 8–10 · 21.25 kg', /Triceps Pushdown \(cable\)/.test(await card('triceps-ext').locator('.ex-title').textContent()) && /^3 × 8–10 · 21\.25 kg/.test((await card('triceps-ext').locator('.ex-target').textContent()).trim()));
+ok('Fly notes: Pec-deck / Reverse pec-deck', /Pec-deck/.test(await card('chest-fly').textContent()) && /Reverse pec-deck/.test(await card('reverse-fly').textContent()));
 ok('No old Fly/Pulldown either-or', (await page.locator('[data-opt="chest-fly"]').count()) === 0 && (await page.locator('.slot[data-slot="pull-slot"]').count()) === 1);
 const pickLabels = await page.$$eval('.slot-pick button', (b) => b.map((x) => x.textContent.trim()));
 ok('Pull slot picker: Row / Pulldown / Both free', pickLabels.join('|') === 'Iso-Lateral Row|Lat Pulldown|Both free', pickLabels.join('|'));
@@ -174,7 +183,7 @@ ok('Triceps extension step is 1.25 kg', (await card('triceps-ext').locator('.set
 // fill remaining blank weights, finish everything, save
 for (const id of ['chest-fly', 'reverse-fly']) for (let i = 0; i < 3; i++) { const inp = card(id).locator(`.set-row[data-i="${i}"] input[data-f="weight"]`); await inp.fill(id === 'chest-fly' ? '30' : '15'); await inp.blur(); }
 { const r = page.locator('.set-row:not(.done) [data-act="done"]'); while (await r.count()) await r.first().tap(); }
-ok('Upper total sets with Both free = 3+3+3+3+3+3+3+3 = 24', (await page.textContent('.sets-total')) === '24');
+ok('Upper total sets with Both free = 3+3+3+3+3+3+3 = 21', (await page.textContent('.sets-total')) === '21');
 await page.tap('[data-act="save"]'); await page.waitForSelector('#toast.show');
 const upSaved = await page.evaluate(() => { const s = Object.values(JSON.parse(localStorage.getItem('fitlog.v1')).sessions).find((x) => x.workoutId === 'upper'); return Object.fromEntries(s.exercises.map((e) => [e.id, e.sets.length])); });
 ok('Saved upper: iso-row 3 + lat-pulldown 3 logged separately', upSaved['iso-row'] === 3 && upSaved['lat-pulldown'] === 3, JSON.stringify(upSaved));
@@ -186,7 +195,7 @@ await page.tap('[data-act="discard"]');
 await page.goto(BASE + '#/history'); await page.tap('[data-act="mode"][data-mode="exercises"]');
 ok('History per exercise: Lat Pulldown & Iso-Lateral Row listed separately', /1 session/.test(await page.locator('.list-row', { hasText: 'Lat Pulldown' }).textContent()) && /1 session/.test(await page.locator('.list-row', { hasText: 'Iso-Lateral Row' }).textContent()));
 await page.goto(BASE + '#/schedule'); await page.waitForSelector('.days');
-ok('Upper Body schedule default 20:00–21:00', /20:00–21:00/.test(await page.locator('.day', { hasText: 'Thu' }).textContent()));
+ok('Upper Body schedule default 20:00–20:55', /20:00–20:55/.test(await page.locator('.day', { hasText: 'Thu' }).textContent()));
 
 // --- export / import ---
 await page.goto(BASE + '#/settings'); await page.waitForSelector('[data-act="export"]');
@@ -235,24 +244,33 @@ await p4.addInitScript(() => {
     sessions: {
       s1: sess('s1', '2026-10-15', [{ id: 'chest-press', name: 'Chest Press', sets: [{ reps: 8, weight: 42.5 }, { reps: 8, weight: 42.5 }, { reps: 8, weight: 42.5 }] },
         { id: 'iso-row', name: 'Iso-Lateral Row', sets: [{ reps: 8, weight: 45 }, { reps: 8, weight: 45 }, { reps: 8, weight: 45 }] },
-        { id: 'lat-pulldown', name: 'Lat Pulldown', sets: [{ reps: 12, weight: 50 }, { reps: 11, weight: 50 }, { reps: 10, weight: 50 }] }]),
+        { id: 'lat-pulldown', name: 'Lat Pulldown', sets: [{ reps: 12, weight: 50 }, { reps: 11, weight: 50 }, { reps: 10, weight: 50 }] },
+        { id: 'triceps-ext', name: 'Triceps Extension', sets: [{ reps: 10, weight: 21.25 }] },
+        { id: 'hammer-curl', name: 'Hammer Curl', sets: [{ reps: 10, weight: 20 }, { reps: 10, weight: 20 }] }]),
+      s3: { ...sess('s3', '2026-10-01', [{ id: 'kb-oblique', name: 'KB Oblique', sets: [{ reps: 12, weight: 31 }] }, { id: 'kb-around', name: 'KB Around', sets: [{ reps: 12, weight: 31 }] }]), workoutId: 'kb' },
       s2: sess('s2', '2026-10-08', [{ id: 'chest-fly', name: 'Chest Fly', sets: [{ reps: 12, weight: 25 }] }, { id: 'old-gone', name: 'Removed Exercise', sets: [{ reps: 5, weight: 10 }] }]),
     },
     deleted: {},
     draft: { id: 'd1', workoutId: 'upper', date: '2026-10-24', startedAt: t, choices: { 'fly-or-pulldown': 'lat-pulldown' }, optionalOn: {},
-      sets: { 'chest-press': [{ reps: 6, weight: 42.5, done: true }], 'lat-pulldown': [{ reps: 10, weight: 50, done: true }, { reps: 10, weight: 50, done: false }, { reps: 10, weight: 50, done: false }] } },
+      sets: { 'chest-press': [{ reps: 6, weight: 42.5, done: true }], 'lat-pulldown': [{ reps: 10, weight: 50, done: true }, { reps: 10, weight: 50, done: false }, { reps: 10, weight: 50, done: false }], 'kb-oblique': [{ reps: 12, weight: 31, done: false }] } },
   }));
 });
 await p4.goto(BASE + '#/log'); await p4.waitForSelector('.ex');
 ok('Migrated old draft: pull slot = Both free, done pulldown set kept', (await p4.locator('.slot-pick button.on').textContent()).trim() === 'Both free' && (await p4.locator('.ex[data-ex="lat-pulldown"] .set-row.done').count()) === 1);
 ok('Migrated: old 3-set iso-row history → 3 sets in Both mode', (await p4.locator('.ex[data-ex="iso-row"] .set-row').count()) === 3);
 ok('Old chest press done set kept', (await p4.locator('.ex[data-ex="chest-press"] .set-row.done').count()) === 1);
-ok('Schema bumped to 2', (await p4.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')).schema)) === 2);
+ok('Schema bumped to 3', (await p4.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')).schema)) === 3);
+ok('Draft oblique 31 → 15.5 (one-time)', (await p4.evaluate(() => JSON.parse(localStorage.getItem('fitlog.v1')).draft.sets['kb-oblique'][0].weight)) === 15.5);
+const pf = await p4.evaluate(async () => { const L = await import(new URL('js/logic.js', location.href).href); const P = await import(new URL('js/program.js', location.href).href);
+  return ['kb-oblique', 'kb-around'].map((id) => L.prefillSets(P.findExercise(id))[0].weight); });
+ok('Last logged 31 → prefill 15.5 (Oblique, Around)', pf.join() === '15.5,15.5', pf.join());
 await p4.goto(BASE + '#/history'); await p4.waitForSelector('.hist');
-ok('Old sessions still listed (incl. removed exercise)', (await p4.locator('.hist').count()) === 2);
+ok('Old sessions still listed (incl. removed exercise)', (await p4.locator('.hist').count()) === 3);
 await p4.locator('.hist-head').nth(1).tap();
 ok('Removed exercise still shown by name', /Removed Exercise/.test(await p4.textContent('.hist-body')));
 await p4.tap('[data-act="mode"][data-mode="exercises"]');
+ok('Old gym Hammer Curl history still listed (removed from plan)', /Removed from plan · 1 session/.test(await p4.locator('.list-row', { hasText: 'Hammer Curl (gym)' }).textContent()));
+ok('Triceps Pushdown keeps old Triceps Extension history', /1 session/.test(await p4.locator('.list-row', { hasText: 'Triceps Pushdown' }).textContent()));
 ok('Old Chest Fly + Lat Pulldown history kept', /1 session/.test(await p4.locator('.list-row', { hasText: 'Chest Fly' }).textContent()) && /1 session/.test(await p4.locator('.list-row', { hasText: 'Lat Pulldown' }).textContent()));
 await p4.goto(BASE + '#/muscles'); await p4.tap('[data-act="m-mode"][data-mode="week"]');
 await p4.goto(BASE + '#/schedule'); await p4.waitForSelector('.days');

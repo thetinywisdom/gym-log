@@ -51,7 +51,7 @@ export function prefillSets(ex) {
     let weight = ex.bodyweight ? null : ex.weight;
     if (!ex.bodyweight && last) {
       const ls = last.sets[i] || last.sets[last.sets.length - 1];
-      if (ls && ls.weight != null) weight = ls.weight;
+      if (ls && ls.weight != null) weight = ex.legacyWeights?.[ls.weight] ?? ls.weight;
     }
     return { reps, weight, done: false };
   });

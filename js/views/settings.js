@@ -4,7 +4,7 @@ import { syncEnabled, getSyncStatus, signIn, signOutUser } from '../sync.js';
 import { todayISO, esc } from '../utils.js';
 import { ICON, toast } from '../ui.js';
 
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.0';
 
 function syncCard() {
   if (!syncEnabled) return '';

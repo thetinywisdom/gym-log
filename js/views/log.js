@@ -1,4 +1,4 @@
-import { PROGRAM, getWorkout, repRange, repLabel, restLabel, resolveSlot, MUSCLES } from '../program.js';
+import { PROGRAM, getWorkout, repRange, repLabel, restLabel, resolveSlot, MUSCLES, setsLabel, sideOf } from '../program.js';
 import { store } from '../store.js';
 import { prefillSets, lastFor, readyToProgress, nextWeight, sessionExercises, programWeek, scheduledOn, nextScheduled, bestFor } from '../logic.js';
 import { todayISO, fmtDate, addMinutes, esc, fmtKg, uid, DOW_SHORT } from '../utils.js';
@@ -127,7 +127,7 @@ function exerciseCard(d, slot, ex) {
   const last = lastFor(ex.id);
   const ready = readyToProgress(ex);
   const allDone = sets.length && sets.every((s) => s.done);
-  const target = `${ex.sets} × ${repLabel(ex)}${ex.perSide ? '/leg' : ''}${ex.bodyweight ? ' · bodyweight' : ex.weight != null ? ` · ${fmtKg(ex.weight)} kg` : ''}`;
+  const target = `${setsLabel(ex)}${ex.bodyweight ? ' · bodyweight' : ex.weight != null ? ` · ${fmtKg(ex.weight)} kg` : ''}`;
   const lastTxt = last ? `Last ${fmtDate(last.date, { weekday: false })}: ${last.sets.map((s) => (ex.bodyweight || s.weight == null ? s.reps : `${fmtKg(s.weight)}×${s.reps}`)).join(', ')}`
     : ex.bodyweight ? 'First time' : ex.weight == null ? 'First time — type the weight you use' : 'First time — plan weight prefilled';
   let readyHtml = '';
@@ -153,7 +153,7 @@ function exerciseCard(d, slot, ex) {
     ${isOff ? '' : `
     <div class="ex-meta">${readyHtml}<span class="muted small">${esc(lastTxt)}</span>${ex.note ? `<span class="muted small">${esc(ex.note)}</span>` : ''}</div>
     <div class="sets ${ex.bodyweight ? 'bw' : ''}">
-      <div class="set-head"><span>Set</span>${ex.bodyweight ? '' : '<span>Weight kg</span>'}<span>Reps${ex.perSide ? ' / leg' : ''}</span><span></span></div>
+      <div class="set-head"><span>Set</span>${ex.bodyweight ? '' : '<span>Weight kg</span>'}<span>Reps${sideOf(ex) ? ` / ${sideOf(ex)}` : ''}</span><span></span></div>
       ${sets.map((s, i) => setRow(ex, s, i)).join('')}
     </div>`}
   </article>`;
@@ -308,7 +308,7 @@ export function muscleListHtml(ex) {
 
 export function showExerciseMap(ex) {
   const best = bestFor(ex.id);
-  openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${ex.sets} × ${repLabel(ex)}${ex.perSide ? '/leg' : ''}${best ? ` · best ${fmtKg(best.weight)} kg × ${best.reps}` : ''}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
+  openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${setsLabel(ex)}${best ? ` · best ${fmtKg(best.weight)} kg × ${best.reps}` : ''}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
     ${bodyMap(exerciseLevels(ex))}${muscleListHtml(ex)}`);
 }
 

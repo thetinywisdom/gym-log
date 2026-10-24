@@ -30,13 +30,13 @@ export function renderHistory(el) {
     }).join('') : '<p class="empty">No workouts yet. Log your first session on the Today tab.</p>';
   } else {
     const seen = new Set();
-    const exs = allExercises().filter((e) => (seen.has(e.id) ? false : seen.add(e.id)));
+    const exs = allExercises().filter((e) => (seen.has(e.id) ? false : seen.add(e.id)) && (!e.retired || historyFor(e.id).length));
     body = Object.values(PROGRAM.workouts).map((w) => `<h3>${esc(w.name)}</h3>
       <div class="card list">${exs.filter((e) => e.workout === w.id).map((e) => {
         const h = historyFor(e.id); const best = bestFor(e.id);
         return `<button class="list-row" data-act="ex" data-ex="${e.id}">
-          <span><b>${esc(e.name)}</b><span class="muted small">${h.length ? `${h.length} session${h.length === 1 ? '' : 's'} · last ${fmtDate(h[0].date, { weekday: false })}` : 'Not logged yet'}</span></span>
-          <span class="right">${readyToProgress(e) ? `<span class="badge ready sm">${ICON.up}</span>` : ''}${best && best.weight != null ? `<b>${fmtKg(best.weight)} kg</b>` : h.length ? `<b>${Math.max(...h.flatMap((x) => x.sets.map((s) => s.reps)))} reps</b>` : '<span class="muted">—</span>'}</span>
+          <span><b>${esc(e.name)}</b><span class="muted small">${e.retired ? 'Removed from plan · ' : ''}${h.length ? `${h.length} session${h.length === 1 ? '' : 's'} · last ${fmtDate(h[0].date, { weekday: false })}` : 'Not logged yet'}</span></span>
+          <span class="right">${!e.retired && readyToProgress(e) ? `<span class="badge ready sm">${ICON.up}</span>` : ''}${best && best.weight != null ? `<b>${fmtKg(best.weight)} kg</b>` : h.length ? `<b>${Math.max(...h.flatMap((x) => x.sets.map((s) => s.reps)))} reps</b>` : '<span class="muted">—</span>'}</span>
         </button>`;
       }).join('')}</div>`).join('');
   }

@@ -10,7 +10,9 @@
 //    reps       number, or [min, max] for a rep range
 //    weight     starting weight in kg (null = bodyweight / not set yet)
 //    bodyweight true → reps only, no weight input
-//    perSide    true → reps are per leg / per side
+//    perSide    'leg' | 'side' | 'direction' → reps are per leg / side / direction (true = 'leg')
+//    note       short cue shown on the exercise card
+//    legacyWeights  { old: new } — if the last logged weight is `old`, prefill `new` instead
 //    step       weight stepper increment in kg (default 2.5)
 //    rest       [min, max] rest in seconds after each set
 //    optional   true → hidden unless toggled on in the log
@@ -52,13 +54,15 @@ export const PROGRAM = {
           primary: ['quads', 'glutes'], secondary: ['adductors', 'abs', 'traps', 'midBack'] },
         { id: 'kb-rdl', name: 'KB Romanian Deadlift', sets: 3, reps: 10, weight: 15.5, kettlebell: true, rest: REST_HEAVY,
           primary: ['hamstrings', 'glutes'], secondary: ['lowerBack', 'forearms'] },
-        { id: 'reverse-lunge', name: 'Reverse Lunge', sets: 3, reps: 8, perSide: true, weight: 11, kettlebell: true, rest: REST_KB,
+        { id: 'reverse-lunge', name: 'Reverse Lunge', sets: 3, reps: 8, perSide: 'leg', weight: 11, kettlebell: true, rest: REST_KB,
+          note: 'Goblet hold at chest',
           primary: ['quads', 'glutes'], secondary: ['hamstrings', 'adductors', 'calves'] },
-        { id: 'kb-oblique', name: 'KB Oblique', sets: 3, reps: 12, weight: 31, rest: REST_KB,
-          note: 'Weight as logged in your app.',
+        // One 15.5 kg bell. Older logs recorded 31 kg (both sides added up) → prefill 15.5.
+        { id: 'kb-oblique', name: 'KB Oblique', sets: 3, reps: 12, perSide: 'side', weight: 15.5, kettlebell: true, rest: REST_KB,
+          note: 'Standing side bend, one bell', legacyWeights: { 31: 15.5 },
           primary: ['obliques'], secondary: ['abs', 'lowerBack'] },
-        { id: 'kb-around', name: 'KB Around', sets: 3, reps: 12, weight: 31, rest: REST_KB,
-          note: 'Around-the-body pass. Weight as logged in your app.',
+        { id: 'kb-around', name: 'KB Around', sets: 3, reps: 12, perSide: 'direction', weight: 15.5, kettlebell: true, rest: REST_KB,
+          note: 'Around-the-body pass, one bell', legacyWeights: { 31: 15.5 },
           primary: ['abs', 'obliques'], secondary: [...SHOULDERS, 'forearms'] },
         { id: 'kb-halo', name: 'KB Halo', sets: 3, reps: 12, weight: 11, kettlebell: true, rest: REST_KB,
           primary: SHOULDERS, secondary: ['traps', 'midBack', 'abs', 'triceps'] },
@@ -75,7 +79,7 @@ export const PROGRAM = {
       id: 'upper',
       name: 'Upper Body',
       short: 'Upper',
-      durationMin: 60, // ~55–60 min
+      durationMin: 55, // ~50–55 min
       exercises: [
         { id: 'chest-press', name: 'Chest Press', sets: 3, reps: [6, 8], weight: 42.5, rest: REST_2MIN,
           primary: ['chest'], secondary: ['triceps', 'frontDelts'] },
@@ -91,17 +95,24 @@ export const PROGRAM = {
           ] },
         { id: 'shoulder-press', name: 'Shoulder Press', sets: 3, reps: [6, 8], weight: 70, rest: REST_2MIN,
           primary: ['frontDelts', 'sideDelts'], secondary: ['triceps', 'chest'] },
-        { id: 'chest-fly', name: 'Chest Fly', sets: 3, reps: [10, 12], weight: null, rest: [90, 90],
+        { id: 'chest-fly', name: 'Chest Fly', sets: 3, reps: [10, 12], weight: null, rest: [90, 90], note: 'Pec-deck',
           primary: ['chest'], secondary: ['frontDelts'] },
-        { id: 'reverse-fly', name: 'Reverse Fly', sets: 3, reps: [12, 15], weight: null, rest: [60, 90],
+        { id: 'reverse-fly', name: 'Reverse Fly', sets: 3, reps: [12, 15], weight: null, rest: [60, 90], note: 'Reverse pec-deck',
           primary: ['rearDelts'], secondary: ['traps', 'midBack'] },
-        { id: 'triceps-ext', name: 'Triceps Extension', sets: 3, reps: [8, 10], weight: 21.25, step: 1.25, rest: [90, 90],
+        // id kept as 'triceps-ext' so history carries over.
+        { id: 'triceps-ext', name: 'Triceps Pushdown (cable)', sets: 3, reps: [8, 10], weight: 21.25, step: 1.25, rest: [90, 90],
+          note: 'Cable, start at chest height',
           primary: ['triceps'], secondary: [] },
-        { id: 'hammer-curl', name: 'Hammer Curl', sets: 3, reps: [8, 12], weight: 20, rest: [60, 90],
-          primary: ['brachialis', 'biceps'], secondary: ['forearms'] },
       ],
     },
   },
+
+  // Exercises no longer in the plan. Never logged in new sessions, but their history stays
+  // visible (History → Exercises) under their workout.
+  retired: [
+    { id: 'hammer-curl', name: 'Hammer Curl (gym)', workout: 'upper', sets: 3, reps: [8, 12], weight: 20, rest: [60, 90],
+      primary: ['brachialis', 'biceps'], secondary: ['forearms'] },
+  ],
 
   // Default weekly schedules. dow: 0 = Sunday … 6 = Saturday. Times are JST.
   schedules: {
@@ -153,6 +164,7 @@ export function allExercises() {
       else out.push({ ...ex, workout: w.id });
     }
   }
+  for (const r of PROGRAM.retired || []) out.push({ ...r, retired: true });
   return out;
 }
 
@@ -176,4 +188,8 @@ export function restLabel([a, b]) {
   const one = (x) => (x >= 120 && x % 60 === 0 ? `${x / 60} min` : `${x}s`);
   return a === b ? one(a) : `${a}–${b}s`;
 }
+/** 'leg' | 'side' | 'direction' | '' */
+export function sideOf(ex) { return ex.perSide === true ? 'leg' : ex.perSide || ''; }
+/** "3 × 12 each side" */
+export function setsLabel(ex) { const s = sideOf(ex); return `${ex.sets} × ${repLabel(ex)}${s ? ` each ${s}` : ''}`; }
 export function repLabel(ex) { const [a, b] = repRange(ex); return a === b ? `${a}` : `${a}–${b}`; }

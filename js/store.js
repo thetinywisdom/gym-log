@@ -13,7 +13,7 @@ function defaultSchedule(mode = '3day') {
 function fresh() {
   const now = Date.now();
   return {
-    schema: 2,
+    schema: 3,
     settings: { planMode: '3day', sound: true, vibrate: true, keepAwake: true, updatedAt: now },
     schedule: { items: defaultSchedule('3day'), updatedAt: now },
     sessions: {},      // id -> session
@@ -34,6 +34,14 @@ export function migrate(st) {
       delete d.choices['fly-or-pulldown'];
     }
     st.schema = 2;
+  }
+  if (st.schema < 3) {
+    // v3: KB Oblique / KB Around use ONE 15.5 kg bell (older drafts had 31 = both sides added).
+    // Saved sessions stay as logged; prefill maps 31 → 15.5 via legacyWeights in program.js.
+    for (const id of ['kb-oblique', 'kb-around']) {
+      for (const x of st.draft?.sets?.[id] || []) if (x.weight === 31) x.weight = 15.5;
+    }
+    st.schema = 3;
   }
   if (st.draft && typeof st.draft === 'object') {
     st.draft.choices ||= {}; st.draft.optionalOn ||= {}; st.draft.sets ||= {};
