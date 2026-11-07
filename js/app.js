@@ -1,6 +1,6 @@
 import { store } from './store.js';
-import { initSheet, initRestbar, ICON, keepAwake } from './ui.js';
-import { renderLog, logClick, logChange } from './views/log.js';
+import { initSheet, initRestbar, ICON, keepAwake, redrawOpenSheet } from './ui.js';
+import { renderLog, logClick, logChange, onHistoryChanged } from './views/log.js';
 import { renderSchedule, scheduleClick } from './views/schedule.js';
 import { renderMuscles, musclesClick } from './views/muscles.js';
 import { renderHistory, historyClick } from './views/history.js';
@@ -65,7 +65,15 @@ window.addEventListener('pageshow', refreshAfterResume);
 window.addEventListener('focus', refreshAfterResume);
 
 // Re-render on data changes (not on draft keystrokes; log view updates itself in place).
-store.subscribe((ch) => { if (ch.kind !== 'draft') render(); });
+// Session saves, deletes, imports and sync snapshots also refresh an open best/PR sheet
+// and Today’s untouched prefills. The page you open next reads the same store.
+store.subscribe((ch) => {
+  if (ch.kind === 'session' || ch.kind === 'all') {
+    onHistoryChanged();
+    redrawOpenSheet();
+  }
+  if (ch.kind !== 'draft') render();
+});
 onSyncStatus((s) => {
   const dot = document.getElementById('sync-dot');
   dot.hidden = false; dot.dataset.state = s.state;

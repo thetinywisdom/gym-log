@@ -15,7 +15,7 @@ A small, mobile-first workout app. It's plain HTML, CSS and JavaScript with no b
 - **Schedule:** a weekly plan you can edit (day and time, plus adding or removing sessions), with a 3-day/4-day toggle.
   - Progress through the 12-week program is shown, with deload weeks 4, 8 and 12 highlighted. Logged days get a ✓.
 - **Muscles:** front and back body maps showing the primary (bright) and secondary (dim) muscles. You can view them per exercise, per session, or as a heatmap of sets per muscle for a calendar week (Monday–Sunday, JST). **This week** follows today, including when the app is resumed on a later day without a reload. The arrows open another week and stay there until you tap **This week** or **Back to this week**. Imported sessions count on the week they were logged (Oct 4–22, 2026), so the weeks of Oct 26 and Nov 2 stay empty until a workout is logged there. Warm-ups are not counted; failure and drop sets are.
-- **History:** past workouts, plus per-exercise history with best weight and a trend line.
+- **History:** past workouts, plus per-exercise history with best weight and a trend line. Saving, deleting, importing, or a cloud update refreshes the open page and the next one you open: Today’s last set, prefill and progress badge, Schedule checkmarks, the weekly muscle map (on the week that workout was logged), and History bests. A set you already marked done is not rewritten.
 - **Settings:** export/import a JSON backup, sound/vibration/keep-awake options, and optional Google sign-in with cloud sync.
 
 Data is stored in the browser's `localStorage`, so it works offline (PWA: you can add it to your home screen). Without Firebase, data lives only on that device and browser, so export a backup now and then.
@@ -95,4 +95,5 @@ python3 -m http.server 8765 &
 CHROME=/path/to/chrome node tests/qa.mjs http://localhost:8765/
 CHROME=/path/to/chrome node tests/watch-qa.mjs http://localhost:8765/
 CHROME=/path/to/chrome node tests/week-map.mjs http://localhost:8765/
+CHROME=/path/to/chrome node tests/history-refresh.mjs http://localhost:8765/
 ```

@@ -2,7 +2,7 @@ import { PROGRAM, getWorkout, repRange, repLabel, restLabel, resolveSlot, MUSCLE
 import { store } from '../store.js';
 import { prefillSets, lastFor, readyToProgress, nextWeight, sessionExercises, programWeek, scheduledOn, nextScheduled, bestFor, equipChoice } from '../logic.js';
 import { todayISO, fmtDate, addMinutes, esc, fmtKg, uid, DOW_SHORT } from '../utils.js';
-import { ICON, toast, openSheet, closeSheet, startRest, stopRest, keepAwake } from '../ui.js';
+import { ICON, toast, openSheet, setSheetRedraw, startRest, stopRest, keepAwake } from '../ui.js';
 import { bodyMap, exerciseLevels, combinedLevels } from '../muscles.js';
 import { canWatch, openWatch } from '../watch.js';
 
@@ -23,18 +23,28 @@ function draftHasProgress(d) {
   return d && Object.values(d.sets).some((arr) => arr.some((s) => s.done));
 }
 
+// Bumps when a session is saved, deleted, imported, or applied from sync.
+// An untouched draft (no set marked done) re-prefills from that history; a value
+// you typed, and any set marked done, is left as you left it.
+let historyRev = 0;
+export function onHistoryChanged() { historyRev++; }
+
 function getDraft() {
   let d = store.state.draft;
   // A stale, untouched draft from another day gets refreshed.
   if (d && d.date !== todayISO() && !draftHasProgress(d)) d = null;
   if (!d) { d = newDraft(defaultWorkout()); store.state.draft = d; }
+  applyHistoryPrefills(d);
   for (const ex of activeExercises(d, true)) ensureSets(d, ex);
   return d;
 }
 
 function ensureSets(d, ex) {
   let arr = d.sets[ex.id];
-  if (!Array.isArray(arr)) arr = d.sets[ex.id] = prefillSets(ex);
+  if (!Array.isArray(arr)) {
+    arr = d.sets[ex.id] = prefillSets(ex);
+    (d.prefillStamp ||= {})[ex.id] = arr.map((s) => ({ weight: s.weight, reps: s.reps }));
+  }
   // Planned set count can change (e.g. pull slot 4 sets ↔ "Both free" 3 sets, or an older saved draft):
   if (arr.length < ex.sets) arr.push(...prefillSets(ex).slice(arr.length));
   while (arr.length > ex.sets && !arr[arr.length - 1].done) arr.pop();
@@ -43,6 +53,34 @@ function ensureSets(d, ex) {
 
 function activeExercises(d, includeOptional = false) {
   return sessionExercises(d.workoutId, d, includeOptional);
+}
+
+/** Copy the latest history into prefilled sets that are still the last automatic value. */
+function applyHistoryPrefills(d) {
+  // First time we see this draft, keep what it already has (including a weight you typed
+  // before this rev existed). Later session changes update only cells still equal to the stamp.
+  if (d.historyRev == null) { d.historyRev = historyRev; return; }
+  if (d.historyRev === historyRev) return;
+  d.historyRev = historyRev;
+  if (draftHasProgress(d)) return;
+  for (const ex of activeExercises(d, true)) {
+    const arr = ensureSets(d, ex);
+    const fill = prefillSets(ex);
+    const stamp = (d.prefillStamp ||= {})[ex.id];
+    if (!stamp) continue;
+    for (let i = 0; i < arr.length; i++) {
+      const s = arr[i];
+      if (s.done) continue;
+      const next = fill[Math.min(i, fill.length - 1)];
+      const prev = stamp[i];
+      if (!next || !prev) continue;
+      if (s.weight === prev.weight && s.reps === prev.reps) {
+        s.weight = next.weight;
+        s.reps = next.reps;
+        stamp[i] = { weight: s.weight, reps: s.reps };
+      }
+    }
+  }
 }
 
 function saveDraft() { store.commit({ kind: 'draft' }); }
@@ -344,9 +382,13 @@ export function watchHtml(ex) {
 
 /** Muscle sheet opened by the card's human icon. No Watch control here (v1.3.1): ▶ lives in the card header. */
 export function showExerciseMap(ex) {
-  const best = bestFor(ex.id, ex.equipId);
-  openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${setsLabel(ex)}${ex.equipName ? ` · ${esc(ex.equipName)}` : ''}${best ? ` · best ${fmtKg(best.weight)} kg × ${best.reps}` : ''}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
-    ${bodyMap(exerciseLevels(ex))}${muscleListHtml(ex)}`);
+  const draw = () => {
+    const best = bestFor(ex.id, ex.equipId);
+    openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${setsLabel(ex)}${ex.equipName ? ` · ${esc(ex.equipName)}` : ''}${best ? ` · best ${fmtKg(best.weight)} kg × ${best.reps}` : ''}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
+      ${bodyMap(exerciseLevels(ex))}${muscleListHtml(ex)}`);
+    setSheetRedraw(draw);
+  };
+  draw();
 }
 
 // ▶ Watch: a card inside the pull slot offers the slot's current choice(s) — row, pulldown, or both when "Both free".

@@ -2,7 +2,7 @@ import { PROGRAM, getWorkout, allExercises, MUSCLES, findExercise, entryEquip, e
 import { store } from '../store.js';
 import { historyFor, bestFor, readyToProgress, workingSets } from '../logic.js';
 import { fmtDate, esc, fmtKg } from '../utils.js';
-import { ICON, openSheet, closeSheet, toast } from '../ui.js';
+import { ICON, openSheet, setSheetRedraw, closeSheet, toast } from '../ui.js';
 import { bodyMap, exerciseLevels } from '../muscles.js';
 
 let mode = 'sessions';
@@ -86,15 +86,19 @@ function sparkline(points) {
 }
 
 function exerciseSheet(id) {
-  const ex = allExercises().find((e) => e.id === id);
-  const h = historyFor(id);
-  const best = bestFor(id);
-  const pts = h.slice(0, 12).reverse().map((x) => ({ v: ex.bodyweight ? Math.max(...x.sets.map((s) => s.reps)) : Math.max(...x.sets.map((s) => s.weight || 0)) }));
-  openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${best && best.weight != null ? `Best ${fmtKg(best.weight)} kg × ${best.reps} (${fmtDate(best.date, { weekday: false })})` : h.length ? 'Bodyweight' : 'No sessions yet'}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
-    ${readyToProgress(ex) ? `<div class="badge ready">${ICON.up} Ready to progress — ${esc(PROGRAM.progressionRule)}</div>` : ''}
-    ${pts.length > 1 ? `<div class="spark-wrap"><span class="muted small">${ex.bodyweight ? 'Top reps' : 'Top weight (kg)'} per session</span>${sparkline(pts)}</div>` : ''}
-    <div class="card list flat">${h.length ? h.slice(0, 10).map((x) => `<div class="list-row static"><span>${fmtDate(x.date)}${equipName(ex, x.equip) ? ` <span class="equip-tag">· ${esc(equipName(ex, x.equip))}</span>` : ''}</span><span class="muted">${fmtSets(x.sets)}${x.imported ? ` ${importedTag}` : ''}</span></div>`).join('') : '<p class="empty">Log this exercise to see its history.</p>'}</div>
-    <details class="mini-map"><summary>${ICON.body} Muscles worked</summary>${bodyMap(exerciseLevels(ex))}</details>`);
+  const draw = () => {
+    const ex = allExercises().find((e) => e.id === id);
+    const h = historyFor(id);
+    const best = bestFor(id);
+    const pts = h.slice(0, 12).reverse().map((x) => ({ v: ex.bodyweight ? Math.max(...x.sets.map((s) => s.reps)) : Math.max(...x.sets.map((s) => s.weight || 0)) }));
+    openSheet(`<div class="sheet-head"><div><h2>${esc(ex.name)}</h2><p class="muted">${best && best.weight != null ? `Best ${fmtKg(best.weight)} kg × ${best.reps} (${fmtDate(best.date, { weekday: false })})` : h.length ? 'Bodyweight' : 'No sessions yet'}</p></div><button class="icon-btn" data-act="sheet-close" aria-label="Close">${ICON.close}</button></div>
+      ${readyToProgress(ex) ? `<div class="badge ready">${ICON.up} Ready to progress — ${esc(PROGRAM.progressionRule)}</div>` : ''}
+      ${pts.length > 1 ? `<div class="spark-wrap"><span class="muted small">${ex.bodyweight ? 'Top reps' : 'Top weight (kg)'} per session</span>${sparkline(pts)}</div>` : ''}
+      <div class="card list flat">${h.length ? h.slice(0, 10).map((x) => `<div class="list-row static"><span>${fmtDate(x.date)}${equipName(ex, x.equip) ? ` <span class="equip-tag">· ${esc(equipName(ex, x.equip))}</span>` : ''}</span><span class="muted">${fmtSets(x.sets)}${x.imported ? ` ${importedTag}` : ''}</span></div>`).join('') : '<p class="empty">Log this exercise to see its history.</p>'}</div>
+      <details class="mini-map"><summary>${ICON.body} Muscles worked</summary>${bodyMap(exerciseLevels(ex))}</details>`);
+    setSheetRedraw(draw);
+  };
+  draw();
 }
 
 export function historyClick(e, el, rerender) {
