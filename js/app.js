@@ -1,6 +1,6 @@
 import { store } from './store.js';
-import { initSheet, initRestbar, ICON, keepAwake } from './ui.js';
-import { renderLog, logClick, logChange } from './views/log.js';
+import { initSheet, initRestbar, ICON, keepAwake, redrawOpenSheet } from './ui.js';
+import { renderLog, logClick, logChange, onHistoryChanged } from './views/log.js';
 import { renderSchedule, scheduleClick } from './views/schedule.js';
 import { renderMuscles, musclesClick } from './views/muscles.js';
 import { renderHistory, historyClick } from './views/history.js';
@@ -8,6 +8,7 @@ import { renderSettings, settingsClick, settingsChange } from './views/settings.
 import { initSync, onSyncStatus, syncEnabled } from './sync.js';
 import { initWatch, closeWatch } from './watch.js';
 import { applyHistoryImport } from './importer.js';
+import { todayISO } from './utils.js';
 
 const ROUTES = {
   log: { title: 'Today', render: renderLog, click: logClick, change: logChange },
@@ -19,6 +20,7 @@ const ROUTES = {
 
 const view = document.getElementById('view');
 let current = 'log';
+let renderedDay = null;
 
 function routeFromHash() {
   const r = location.hash.replace(/^#\/?/, '');
@@ -33,6 +35,7 @@ function render() {
   document.getElementById('settings-link').classList.toggle('on', current === 'settings');
   view.dataset.route = current;
   r.render(view);
+  renderedDay = todayISO();
 }
 
 function navigate() {
@@ -48,10 +51,29 @@ function navigate() {
 view.addEventListener('click', (e) => ROUTES[current].click?.(e, view, render));
 view.addEventListener('change', (e) => ROUTES[current].change?.(e, view, render));
 window.addEventListener('hashchange', navigate);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && current === 'log') keepAwake(true); });
+
+// A home-screen PWA usually resumes this page instead of reloading. Dates are read
+// when a view renders, so without this a Muscles / Schedule / Today screen left open
+// across midnight keeps the previous day — and "This week" stays on last week's Monday.
+function refreshAfterResume() {
+  if (document.visibilityState === 'hidden') return;
+  if (current === 'log') keepAwake(true);
+  if (todayISO() !== renderedDay) render();
+}
+document.addEventListener('visibilitychange', refreshAfterResume);
+window.addEventListener('pageshow', refreshAfterResume);
+window.addEventListener('focus', refreshAfterResume);
 
 // Re-render on data changes (not on draft keystrokes; log view updates itself in place).
-store.subscribe((ch) => { if (ch.kind !== 'draft') render(); });
+// Session saves, deletes, imports and sync snapshots also refresh an open best/PR sheet
+// and Today’s untouched prefills. The page you open next reads the same store.
+store.subscribe((ch) => {
+  if (ch.kind === 'session' || ch.kind === 'all') {
+    onHistoryChanged();
+    redrawOpenSheet();
+  }
+  if (ch.kind !== 'draft') render();
+});
 onSyncStatus((s) => {
   const dot = document.getElementById('sync-dot');
   dot.hidden = false; dot.dataset.state = s.state;

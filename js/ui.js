@@ -36,13 +36,22 @@ export function toast(msg) {
 
 // ---------- bottom sheet ----------
 let sheetHandler = null;
+let sheetRedraw = null;
 export function openSheet(html, handler) {
   const root = document.getElementById('sheet');
+  sheetRedraw = null;
   root.querySelector('.sheet-body').innerHTML = html;
   sheetHandler = handler || null;
   root.hidden = false;
   requestAnimationFrame(() => root.classList.add('open'));
   document.body.classList.add('no-scroll');
+}
+/** Re-fill the open sheet from current data. Callers set this after openSheet. */
+export function setSheetRedraw(fn) { sheetRedraw = fn; }
+export function redrawOpenSheet() {
+  const root = document.getElementById('sheet');
+  if (!sheetRedraw || !root || root.hidden) return;
+  sheetRedraw();
 }
 export function closeSheet() {
   const root = document.getElementById('sheet');
@@ -50,6 +59,7 @@ export function closeSheet() {
   document.body.classList.remove('no-scroll');
   setTimeout(() => { if (!root.classList.contains('open')) root.hidden = true; }, 220);
   sheetHandler = null;
+  sheetRedraw = null;
 }
 export function initSheet() {
   const root = document.getElementById('sheet');
