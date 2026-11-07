@@ -14,7 +14,7 @@ A small, mobile-first workout app. It's plain HTML, CSS and JavaScript with no b
 - **3D player (v1.3.1):** no camera drag/zoom (OrbitControls removed, the canvas never captures touch). A **Front | Back** toggle swings the camera behind the figure (≈250 ms ease) and is remembered for the session. Rendering caps pixel ratio at 1.5 and pauses when the sheet is closed or the tab is hidden. On machines with a backrest (chest/shoulder press) the Back view is partly hidden by the backrest.
 - **Schedule:** a weekly plan you can edit (day and time, plus adding or removing sessions), with a 3-day/4-day toggle.
   - Progress through the 12-week program is shown, with deload weeks 4, 8 and 12 highlighted. Logged days get a ✓.
-- **Muscles:** front and back body maps showing the primary (bright) and secondary (dim) muscles. You can view them per exercise, per session, or as a heatmap of sets per muscle this week.
+- **Muscles:** front and back body maps showing the primary (bright) and secondary (dim) muscles. You can view them per exercise, per session, or as a heatmap of sets per muscle for a calendar week (Monday–Sunday, JST). **This week** follows today, including when the app is resumed on a later day without a reload. The arrows open another week and stay there until you tap **This week** or **Back to this week**. Imported sessions count on the week they were logged (Oct 4–22, 2026), so the weeks of Oct 26 and Nov 2 stay empty until a workout is logged there. Warm-ups are not counted; failure and drop sets are.
 - **History:** past workouts, plus per-exercise history with best weight and a trend line.
 - **Settings:** export/import a JSON backup, sound/vibration/keep-awake options, and optional Google sign-in with cloud sync.
 
@@ -94,4 +94,5 @@ npm i playwright-core          # in this folder (or anywhere on your NODE_PATH)
 python3 -m http.server 8765 &
 CHROME=/path/to/chrome node tests/qa.mjs http://localhost:8765/
 CHROME=/path/to/chrome node tests/watch-qa.mjs http://localhost:8765/
+CHROME=/path/to/chrome node tests/week-map.mjs http://localhost:8765/
 ```

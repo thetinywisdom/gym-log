@@ -1,17 +1,21 @@
 import { PROGRAM, MUSCLES, repLabel, allExercises, setsLabel, withEquip } from '../program.js';
 import { sessionExercises, weeklyMuscleSets, sessionsInWeek, equipChoice } from '../logic.js';
+import { store } from '../store.js';
 import { bodyMap, exerciseLevels, combinedLevels } from '../muscles.js';
 import { muscleListHtml, watchHtml } from './log.js';
 import { openWatch } from '../watch.js';
-import { todayISO, mondayOf, addDays, fmtDate, esc } from '../utils.js';
+import { addDays, fmtDate, esc, syncWeekCursor, stepWeekCursor, resetWeekCursor } from '../utils.js';
 import { ICON } from '../ui.js';
 
-const st = { mode: 'session', workout: 'kb', optional: false, exId: 'kb-swing', monday: null };
+const st = { mode: 'session', workout: 'kb', optional: false, exId: 'kb-swing', monday: null, pinned: false };
 
 export function setMusclesState(patch) { Object.assign(st, patch); }
 
 export function renderMuscles(el) {
-  if (!st.monday) st.monday = mondayOf(todayISO());
+  // Follow today until the arrows pin another week. A page left open from last week
+  // (common for an installed PWA that resumes instead of reloading) would otherwise
+  // keep showing that week under the "This week" tab.
+  const currentMonday = syncWeekCursor(st);
   const tabs = [['session', 'Session'], ['exercise', 'Exercise'], ['week', 'This week']];
   let body = '';
 
@@ -40,12 +44,16 @@ export function renderMuscles(el) {
     for (const [m, c] of Object.entries(counts)) lv[m] = Math.min(0.98, 0.18 + 0.8 * (c / max));
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const n = sessionsInWeek(st.monday).length;
+    const onThisWeek = st.monday === currentMonday;
+    const others = store.sessionList().length - n;
     body = `<div class="week-nav">
         <button class="icon-btn" data-act="m-wk" data-d="-7" aria-label="Previous week">${ICON.chevL}</button>
-        <div class="wk-title"><b>${fmtDate(st.monday, { weekday: false })} – ${fmtDate(addDays(st.monday, 6), { weekday: false })}</b><span class="muted small">${n} workout${n === 1 ? '' : 's'} logged</span></div>
+        <div class="wk-title"><b>${fmtDate(st.monday, { weekday: false })} – ${fmtDate(addDays(st.monday, 6), { weekday: false })}</b><span class="muted small">${n} workout${n === 1 ? '' : 's'} logged</span>
+          ${!n && others ? `<span class="muted small">${others} workout${others === 1 ? '' : 's'} in other weeks</span>` : ''}
+          ${onThisWeek ? '' : `<button type="button" class="chip" data-act="m-this-week">Back to this week</button>`}</div>
         <button class="icon-btn" data-act="m-wk" data-d="7" aria-label="Next week">${ICON.chevR}</button>
       </div>
-      <div class="map-card">${bodyMap(lv)}</div>
+      <div class="map-card week">${bodyMap(lv)}</div>
       <div class="heat-legend"><span>fewer sets</span><i></i><span>more sets</span></div>
       ${sorted.length ? `<div class="bars">${sorted.map(([m, c]) => `<div class="bar-row"><span>${MUSCLES[m]}</span><div class="bar"><i style="width:${(c / max) * 100}%"></i></div><b>${+c.toFixed(1)}</b></div>`).join('')}</div>
         <p class="muted small">Sets per muscle: a primary muscle counts 1 per set, a secondary one counts ½.</p>`
@@ -66,10 +74,14 @@ export function musclesClick(e, el, rerender) {
   const b = e.target.closest('[data-act]');
   if (!b) return;
   const a = b.dataset.act;
-  if (a === 'm-mode') st.mode = b.dataset.mode;
-  else if (a === 'm-workout') st.workout = b.dataset.w;
+  if (a === 'm-mode') {
+    st.mode = b.dataset.mode;
+    // The tab is labeled "This week", including when it is already selected.
+    if (st.mode === 'week') resetWeekCursor(st);
+  } else if (a === 'm-workout') st.workout = b.dataset.w;
   else if (a === 'm-ex') { st.exId = b.dataset.ex; st.mode = 'exercise'; }
-  else if (a === 'm-wk') st.monday = addDays(st.monday, +b.dataset.d);
+  else if (a === 'm-wk') stepWeekCursor(st, +b.dataset.d);
+  else if (a === 'm-this-week') resetWeekCursor(st);
   else if (a === 'm-opt') { st.optional = b.checked; }
   else if (a === 'watch') { if (e.type === 'click') { const ex = allExercises().find((x) => x.id === b.dataset.ex); if (ex) { const v = ex.equip ? withEquip(ex, equipChoice(ex)) : ex; openWatch([{ id: v.id, name: v.name, anim: v.anim }]); } } return; }
   else return;

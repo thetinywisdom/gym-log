@@ -22,6 +22,28 @@ export function dowOf(iso) { return new Date(isoToUTC(iso)).getUTCDay(); }
 export function daysBetween(a, b) { return Math.round((isoToUTC(b) - isoToUTC(a)) / DAY_MS); }
 /** Monday of the week containing iso. */
 export function mondayOf(iso) { const d = dowOf(iso); return addDays(iso, d === 0 ? -6 : 1 - d); }
+
+/**
+ * Week pager cursor `{ monday, pinned }`.
+ * Follows today's JST week until the user steps to a different week.
+ * Stepping back onto the current week clears the pin, so a later day follows again.
+ */
+export function syncWeekCursor(cursor, now = Date.now()) {
+  const current = mondayOf(todayISO(now));
+  if (!cursor.pinned || !cursor.monday) cursor.monday = current;
+  return current;
+}
+export function stepWeekCursor(cursor, deltaDays, now = Date.now()) {
+  const current = mondayOf(todayISO(now));
+  cursor.monday = addDays(cursor.monday || current, deltaDays);
+  cursor.pinned = cursor.monday !== current;
+  return cursor.monday;
+}
+export function resetWeekCursor(cursor, now = Date.now()) {
+  cursor.pinned = false;
+  cursor.monday = mondayOf(todayISO(now));
+  return cursor.monday;
+}
 export function fmtDate(iso, { weekday = true, year = false } = {}) {
   const t = new Date(isoToUTC(iso));
   let s = `${MONTHS[t.getUTCMonth()]} ${t.getUTCDate()}`;

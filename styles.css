@@ -219,6 +219,7 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid 
 .week-nav { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 6px; }
 .wk-title { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .wk-title .chip { margin: 3px 0; }
+.wk-title button.chip { height: auto; min-height: 40px; padding: 0 14px; margin-top: 6px; }
 .days { display: grid; gap: 6px; }
 .day { display: flex; align-items: stretch; gap: 10px; min-height: 58px; }
 .day-label { width: 46px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; background: var(--bg2); font-size: 0.78rem; }
@@ -248,6 +249,7 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid 
 .body-svg .m.primary { fill: var(--accent); filter: drop-shadow(0 0 3px rgba(184, 240, 74, 0.35)); }
 .body-svg .detail { fill: none; stroke: var(--card); stroke-width: 0.8; stroke-linecap: round; }
 .map-card { background: var(--bg2); border-radius: 16px; padding: 10px 8px 6px; margin: 10px 0; }
+.map-card.week .body-svg { max-height: 46dvh; }
 .sheet .bodymap { background: var(--bg2); border-radius: 16px; padding: 10px 8px 6px; }
 .map-title { display: flex; justify-content: space-between; align-items: baseline; padding: 0 6px; }
 .mlist { display: grid; gap: 8px; font-size: 0.9rem; margin: 10px 2px; }

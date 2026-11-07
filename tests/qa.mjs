@@ -128,7 +128,9 @@ ok('Added Sat session persisted', /10:00–10:55/.test(await page.locator('.day'
 ok('Sat 24 shows logged workout', /logged/.test(await page.locator('.day', { hasText: 'Sat' }).textContent()));
 await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: SHOTS + '02-schedule.png' });
-for (let i = 0; i < 4; i++) await page.tap('[data-act="wk"][data-d="7"]');
+// Step to program week 4 from whatever week "today" is (the old fixed +4 assumed the Oct 19 week).
+const weekNum = async () => { const m = (await page.textContent('.wk-title')).match(/Week (\d+)/); return m ? +m[1] : 0; };
+for (let i = 0; i < 16 && (await weekNum()) !== 4; i++) await page.tap(`[data-act="wk"][data-d="${(await weekNum()) < 4 ? 7 : -7}"]`);
 ok('Week 4 shows Deload label', /Week 4/.test(await page.textContent('.wk-title')) && (await page.locator('.wk-title .chip.deload').count()) === 1);
 
 // --- history after reload ---

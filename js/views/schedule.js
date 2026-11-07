@@ -1,10 +1,10 @@
 import { PROGRAM, getWorkout } from '../program.js';
 import { store } from '../store.js';
 import { programWeek, scheduleSorted, sessionsInWeek } from '../logic.js';
-import { todayISO, mondayOf, addDays, fmtDate, addMinutes, DOW_LONG, DOW_SHORT, esc, uid, dowOf } from '../utils.js';
+import { todayISO, addDays, fmtDate, addMinutes, DOW_LONG, DOW_SHORT, esc, uid, dowOf, syncWeekCursor, stepWeekCursor, resetWeekCursor } from '../utils.js';
 import { ICON, openSheet, closeSheet, toast } from '../ui.js';
 
-let viewMonday = null;
+const weekCursor = { monday: null, pinned: false };
 
 function progressCard() {
   const pw = programWeek(todayISO());
@@ -28,7 +28,8 @@ function progressCard() {
 
 export function renderSchedule(el) {
   const today = todayISO();
-  if (!viewMonday) viewMonday = mondayOf(today);
+  const currentMonday = syncWeekCursor(weekCursor);
+  const viewMonday = weekCursor.monday;
   const items = scheduleSorted();
   const pw = programWeek(viewMonday);
   const logged = sessionsInWeek(viewMonday);
@@ -68,7 +69,8 @@ export function renderSchedule(el) {
       <button class="icon-btn" data-act="wk" data-d="-7" aria-label="Previous week">${ICON.chevL}</button>
       <div class="wk-title"><b>${pw.before ? 'Before program' : pw.after ? 'After program' : `Week ${pw.week}`}</b>
         ${pw.deload ? '<span class="chip deload">Deload</span>' : ''}
-        <span class="muted small">${fmtDate(viewMonday, { weekday: false })} – ${fmtDate(addDays(viewMonday, 6), { weekday: false })}</span></div>
+        <span class="muted small">${fmtDate(viewMonday, { weekday: false })} – ${fmtDate(addDays(viewMonday, 6), { weekday: false })}</span>
+        ${viewMonday === currentMonday ? '' : `<button type="button" class="chip" data-act="wk-today">This week</button>`}</div>
       <button class="icon-btn" data-act="wk" data-d="7" aria-label="Next week">${ICON.chevR}</button>
     </div>
     <div class="days">${days}</div>
@@ -121,7 +123,8 @@ export function scheduleClick(e, el, rerender) {
   const b = e.target.closest('[data-act]');
   if (!b) return;
   const act = b.dataset.act;
-  if (act === 'wk') { viewMonday = addDays(viewMonday, +b.dataset.d); return rerender(); }
+  if (act === 'wk') { stepWeekCursor(weekCursor, +b.dataset.d); return rerender(); }
+  if (act === 'wk-today') { resetWeekCursor(weekCursor); return rerender(); }
   if (act === 'mode') {
     const mode = b.dataset.mode;
     if (mode === store.state.settings.planMode) return;
